@@ -112,6 +112,12 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
+          {solvedList.some((p) => p.solvedAfterAnswer) && (
+            <p className="mt-4 text-xs text-muted">
+              {solvedList.filter((p) => !p.solvedAfterAnswer).length} solved on your own ·{" "}
+              {solvedList.filter((p) => p.solvedAfterAnswer).length} after viewing the answer
+            </p>
+          )}
           <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-line pt-4 text-sm">
             <div>
               <dt className="text-xs text-muted">Submissions</dt>
@@ -151,6 +157,9 @@ export default function ProfilePage() {
                         <Link href={`/problems/${prob.id}`} className="font-medium hover:text-accent">
                           {prob.number}. {prob.title}
                         </Link>
+                        {p.solvedAfterAnswer && (
+                          <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">with answer</span>
+                        )}
                       </td>
                       <td className="px-5 py-2.5">
                         <DifficultyText d={prob.difficulty} />

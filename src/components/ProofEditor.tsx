@@ -295,7 +295,7 @@ function Row({ index, line, result, focused, barBelow, readOnly, inputRef, onFoc
           <div className="relative h-8 w-full rounded-md border border-transparent hover:border-line has-[select:focus]:border-accent">
             <span className={`pointer-events-none absolute inset-0 flex items-center justify-between px-2 font-logic text-sm ${line.rule ? "text-text" : "text-muted"}`}>
               {line.rule ? RULE_BY_ID[line.rule].label : <span className="font-sans">Rule…</span>}
-              <span className="text-[10px] text-muted">▾</span>
+              {!readOnly && <span className="text-[10px] text-muted">▾</span>}
             </span>
           <select
             value={line.rule}

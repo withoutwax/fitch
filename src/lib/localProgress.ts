@@ -10,6 +10,10 @@ export interface LocalProgress {
   lastSolvedAt: number | null;
   lastAttemptAt: number | null;
   proof: ProofLine[] | null;
+  /** When the student first looked at the model answer. */
+  viewedAnswerAt?: number | null;
+  /** First solved only after viewing the model answer. */
+  solvedAfterAnswer?: boolean;
 }
 
 export interface LocalSubmission {
@@ -66,6 +70,8 @@ export function recordLocal(problemId: string, solved: boolean, proof: ProofLine
   const now = Date.now();
   const prev = store.progress[problemId];
   store.progress[problemId] = {
+    viewedAnswerAt: prev?.viewedAnswerAt ?? null,
+    solvedAfterAnswer: Boolean(prev?.solvedAfterAnswer) || (solved && !prev?.solved && prev?.viewedAnswerAt != null),
     solved: Boolean(prev?.solved) || solved,
     attempts: (prev?.attempts ?? 0) + 1,
     lastAttemptAt: now,
@@ -75,5 +81,15 @@ export function recordLocal(problemId: string, solved: boolean, proof: ProofLine
   };
   store.submissions.unshift({ id: `local-${now.toString(36)}`, problemId, solved, lineCount: proof.length, at: now });
   store.submissions = store.submissions.slice(0, MAX_SUBMISSIONS);
+  writeLocal(store);
+}
+
+export function recordLocalAnswerView(problemId: string) {
+  const store = readLocal();
+  const prev = store.progress[problemId];
+  if (prev?.viewedAnswerAt) return;
+  store.progress[problemId] = prev
+    ? { ...prev, viewedAnswerAt: Date.now() }
+    : { solved: false, attempts: 0, firstSolvedAt: null, lastSolvedAt: null, lastAttemptAt: null, proof: null, viewedAnswerAt: Date.now() };
   writeLocal(store);
 }

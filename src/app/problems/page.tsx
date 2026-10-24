@@ -113,7 +113,9 @@ export default function ProblemsPage() {
                 <tr key={p.id} className={`group ${i % 2 ? "bg-surface-2/40" : ""} hover:bg-accent-soft/50`}>
                   <td className="px-4 py-3">
                     {pr?.solved ? (
-                      <CheckIcon className="h-4 w-4 text-ok" />
+                      <span title={pr.solvedAfterAnswer ? "Solved with answer" : "Solved"}>
+                        <CheckIcon className={`h-4 w-4 ${pr.solvedAfterAnswer ? "text-muted" : "text-ok"}`} />
+                      </span>
                     ) : pr ? (
                       <span title="Attempted">
                         <DotIcon className="h-4 w-4 text-medium" />

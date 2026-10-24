@@ -15,7 +15,7 @@ import {
 import type { User } from "firebase/auth";
 import type { ProofLine } from "./fitch/checker";
 import { firebase } from "./firebase";
-import { clearLocal, hasLocalData, readLocal, recordLocal } from "./localProgress";
+import { clearLocal, hasLocalData, readLocal, recordLocal, recordLocalAnswerView } from "./localProgress";
 
 // Signed-in students are stored in Firestore:
 //   users/{uid}                          profile
@@ -31,6 +31,9 @@ export interface Progress {
   lastSolvedAt: Date | null;
   lastAttemptAt: Date | null;
   proof?: ProofLine[];
+  viewedAnswerAt: Date | null;
+  /** First solved only after viewing the model answer. */
+  solvedAfterAnswer: boolean;
 }
 
 export interface Submission {
@@ -66,6 +69,8 @@ export async function recordSubmission(uid: string | null, problemId: string, so
     const now = serverTimestamp();
     tx.set(ref, {
       problemId,
+      viewedAnswerAt: prev?.viewedAnswerAt ?? null,
+      solvedAfterAnswer: Boolean(prev?.solvedAfterAnswer) || (solved && !prev?.solved && prev?.viewedAnswerAt != null),
       attempts: (prev?.attempts ?? 0) + 1,
       solved: Boolean(prev?.solved) || solved,
       lastAttemptAt: now,
@@ -82,6 +87,21 @@ export async function recordSubmission(uid: string | null, problemId: string, so
   });
 }
 
+/** Note that the student opened the model answer (only the first time is kept). */
+export async function recordAnswerView(uid: string | null, problemId: string) {
+  if (!uid) {
+    recordLocalAnswerView(problemId);
+    return;
+  }
+  const { db } = firebase();
+  const ref = doc(db, "users", uid, "progress", problemId);
+  await runTransaction(db, async (tx) => {
+    const prev = (await tx.get(ref)).data();
+    if (prev?.viewedAnswerAt) return;
+    tx.set(ref, { problemId, viewedAnswerAt: serverTimestamp() }, { merge: true });
+  });
+}
+
 export async function loadProgress(uid: string | null): Promise<Record<string, Progress>> {
   const out: Record<string, Progress> = {};
   if (!uid) {
@@ -94,6 +114,8 @@ export async function loadProgress(uid: string | null): Promise<Record<string, P
         lastSolvedAt: msToDate(v.lastSolvedAt),
         lastAttemptAt: msToDate(v.lastAttemptAt),
         proof: v.proof ?? undefined,
+        viewedAnswerAt: msToDate(v.viewedAnswerAt ?? null),
+        solvedAfterAnswer: Boolean(v.solvedAfterAnswer),
       };
     }
     return out;
@@ -110,6 +132,8 @@ export async function loadProgress(uid: string | null): Promise<Record<string, P
       lastSolvedAt: toDate(v.lastSolvedAt),
       lastAttemptAt: toDate(v.lastAttemptAt),
       proof: v.proof ?? undefined,
+      viewedAnswerAt: toDate(v.viewedAnswerAt),
+      solvedAfterAnswer: Boolean(v.solvedAfterAnswer),
     };
   });
   return out;
@@ -155,6 +179,11 @@ export async function importGuestProgress(uid: string) {
         firstSolvedAt: msToTs(pick(ms(prev?.firstSolvedAt), g.firstSolvedAt, Math.min)),
         lastSolvedAt: msToTs(pick(prevLastSolved, g.lastSolvedAt, Math.max)),
         proof: (guestSolvedLater ? g.proof : prev?.proof) ?? g.proof ?? null,
+        viewedAnswerAt: msToTs(pick(ms(prev?.viewedAnswerAt), g.viewedAnswerAt ?? null, Math.min)),
+        // Assisted only if neither side ever solved it without the answer.
+        solvedAfterAnswer:
+          (Boolean(prev?.solved) || g.solved) &&
+          !((prev?.solved && !prev?.solvedAfterAnswer) || (g.solved && !g.solvedAfterAnswer)),
       });
     });
   }

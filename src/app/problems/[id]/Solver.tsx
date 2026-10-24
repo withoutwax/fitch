@@ -8,7 +8,7 @@ import { CheckIcon, DifficultyText, formatDate, Spinner } from "@/components/ui"
 import { checkProof, type ProofLine } from "@/lib/fitch/checker";
 import { parseFormula, show } from "@/lib/fitch/formula";
 import { PROBLEMS, type Problem } from "@/lib/fitch/problems";
-import { recordSubmission } from "@/lib/progress";
+import { recordAnswerView, recordSubmission } from "@/lib/progress";
 import { useProgress } from "@/lib/useProgress";
 
 const pretty = (s: string) => show(parseFormula(s));
@@ -92,6 +92,34 @@ export function Solver({ problem }: { problem: Problem }) {
     }
   };
 
+  // ---- model answer ----
+  // Unlocks after one submission. Solutions are fetched only when asked for.
+  const [answerStep, setAnswerStep] = useState<"hidden" | "confirm" | "loading" | "shown">("hidden");
+  const [answer, setAnswer] = useState<ProofLine[] | null>(null);
+  const answerCheck = useMemo(() => (answer ? checkProof(answer, goal) : null), [answer, goal]);
+  const answerUnlocked = (mine?.attempts ?? 0) > 0 || Boolean(mine?.viewedAnswerAt);
+
+  const revealAnswer = async () => {
+    setAnswerStep("loading");
+    try {
+      const { build, SOLUTIONS } = await import("@/lib/fitch/solutions");
+      setAnswer(build(SOLUTIONS[problem.id]));
+      setAnswerStep("shown");
+      await recordAnswerView(user?.uid ?? null, problem.id);
+      await reload();
+    } catch (e) {
+      console.error("Could not load the answer", e);
+      setAnswerStep("hidden");
+    }
+  };
+
+  const askForAnswer = () => (mine?.viewedAnswerAt ? revealAnswer() : setAnswerStep("confirm"));
+
+  const copyAnswer = () => {
+    if (!answer) return;
+    onChange(answer.map((l) => ({ ...l, id: newId() })));
+  };
+
   const idx = PROBLEMS.findIndex((p) => p.id === problem.id);
   const prev = PROBLEMS[idx - 1];
   const next = PROBLEMS[idx + 1];
@@ -113,9 +141,14 @@ export function Solver({ problem }: { problem: Problem }) {
                 <DifficultyText d={problem.difficulty} />
               </span>
               <span className="rounded-full bg-surface-2 px-2.5 py-1 text-muted">{problem.category}</span>
-              {mine?.solved && (
+              {mine?.solved && !mine.solvedAfterAnswer && (
                 <span className="flex items-center gap-1 rounded-full bg-ok-soft px-2.5 py-1 font-medium text-ok">
                   <CheckIcon className="h-3.5 w-3.5" /> Solved
+                </span>
+              )}
+              {mine?.solved && mine.solvedAfterAnswer && (
+                <span className="flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 font-medium text-muted">
+                  <CheckIcon className="h-3.5 w-3.5" /> Solved with answer
                 </span>
               )}
             </div>
@@ -245,6 +278,16 @@ export function Solver({ problem }: { problem: Problem }) {
                 </Link>
               </span>
             )}
+            {answerStep === "hidden" && (
+              <button
+                onClick={askForAnswer}
+                disabled={!answerUnlocked}
+                title={answerUnlocked ? undefined : "Submit at least once to unlock the answer"}
+                className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-surface-2 hover:text-text disabled:pointer-events-none disabled:opacity-50"
+              >
+                {answerUnlocked ? "Show answer" : "🔒 Show answer"}
+              </button>
+            )}
             <button
               onClick={submit}
               disabled={submitting || !check}
@@ -254,7 +297,50 @@ export function Solver({ problem }: { problem: Problem }) {
               Submit
             </button>
           </div>
+          {!answerUnlocked && <p className="text-right text-xs text-muted">Submit at least once to unlock the answer.</p>}
         </div>
+
+        {answerStep === "confirm" && (
+          <div className="border-t border-line bg-surface-2/50 p-4 text-sm">
+            <p className="font-medium">Try a bit longer?</p>
+            <p className="mt-1 text-muted">
+              Struggling is where the learning happens. If you look at the answer first, solving this problem will show as &ldquo;solved with
+              answer&rdquo; on your profile.
+            </p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button onClick={() => setAnswerStep("hidden")} className="rounded-lg px-3 py-1.5 font-medium text-muted hover:bg-surface-2 hover:text-text">
+                Keep trying
+              </button>
+              <button onClick={revealAnswer} className="rounded-lg border border-line bg-surface px-3 py-1.5 font-medium hover:bg-surface-2">
+                Show answer
+              </button>
+            </div>
+          </div>
+        )}
+
+        {answerStep === "loading" && (
+          <div className="grid place-items-center border-t border-line p-6 text-muted">
+            <Spinner />
+          </div>
+        )}
+
+        {answerStep === "shown" && answer && answerCheck && (
+          <div className="border-t border-line">
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <h3 className="text-sm font-semibold">Model answer</h3>
+              <div className="flex gap-1">
+                <button onClick={copyAnswer} className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-text">
+                  Copy into editor
+                </button>
+                <button onClick={() => setAnswerStep("hidden")} className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-text">
+                  Hide
+                </button>
+              </div>
+            </div>
+            <ProofEditor lines={answer} results={answerCheck.lines} onChange={() => {}} readOnly />
+            <p className="px-4 pb-4 text-xs text-muted">This is one correct proof. There are usually others, and a different one is just as valid.</p>
+          </div>
+        )}
       </section>
     </div>
   );

@@ -13,7 +13,7 @@ export function useProgress() {
   useEffect(() => {
     if (authLoading) return;
     let cancelled = false;
-    (uid ? loadProgress(uid) : Promise.resolve({}))
+    loadProgress(uid)
       .catch((e) => {
         console.error("Could not load progress", e);
         return {};
@@ -27,7 +27,7 @@ export function useProgress() {
   }, [authLoading, uid]);
 
   const reload = useCallback(async () => {
-    if (uid) setState({ uid, progress: await loadProgress(uid) });
+    setState({ uid, progress: await loadProgress(uid) });
   }, [uid]);
 
   const fresh = state && state.uid === uid;

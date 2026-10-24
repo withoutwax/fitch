@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { newId, ProofEditor } from "@/components/ProofEditor";
@@ -44,7 +43,6 @@ function writeDraft(id: string, lines: ProofLine[] | null) {
 }
 
 export function Solver({ problem }: { problem: Problem }) {
-  const router = useRouter();
   const { user } = useAuth();
   const { progress, loading, reload } = useProgress();
   const mine = progress[problem.id];
@@ -81,13 +79,10 @@ export function Solver({ problem }: { problem: Problem }) {
 
   const submit = async () => {
     if (!lines || !check) return;
-    if (!user) {
-      router.push(`/login?next=/problems/${problem.id}`);
-      return;
-    }
     setSubmitting(true);
     try {
-      await recordSubmission(user.uid, problem.id, check.solved, lines);
+      // Guests (no uid) are saved in this browser; signed-in students in Firebase.
+      await recordSubmission(user?.uid ?? null, problem.id, check.solved, lines);
       setVerdict({ solved: check.solved, message: check.message, lineCount: lines.length });
       await reload();
     } catch (e) {
@@ -177,7 +172,7 @@ export function Solver({ problem }: { problem: Problem }) {
             </Link>
           </div>
 
-          {user && mine && (
+          {mine && (
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <dt className="text-xs text-muted">Submissions</dt>
@@ -231,7 +226,9 @@ export function Solver({ problem }: { problem: Problem }) {
             <div className={`rounded-lg p-3 text-sm ${verdict.solved ? "bg-ok-soft text-ok" : "bg-bad-soft text-bad"}`}>
               <div className="font-semibold">{verdict.solved ? "Accepted" : "Not accepted yet"}</div>
               <div className="mt-0.5 opacity-90">
-                {verdict.solved ? `Your ${verdict.lineCount}-line proof is correct, and it's saved to your profile.` : verdict.message}
+                {verdict.solved
+                  ? `Your ${verdict.lineCount}-line proof is correct, and it's saved ${user ? "to your profile" : "in this browser"}.`
+                  : verdict.message}
               </div>
             </div>
           ) : (
@@ -240,7 +237,14 @@ export function Solver({ problem }: { problem: Problem }) {
             )
           )}
           <div className="flex items-center justify-end gap-3">
-            {!user && <span className="text-xs text-muted">Sign in to save your progress</span>}
+            {!user && (
+              <span className="text-xs text-muted">
+                Saving in this browser ·{" "}
+                <Link href={`/login?next=/problems/${problem.id}`} className="font-medium text-accent hover:underline">
+                  Sign in to sync
+                </Link>
+              </span>
+            )}
             <button
               onClick={submit}
               disabled={submitting || !check}

@@ -17,18 +17,21 @@ export default function ProfilePage() {
   const router = useRouter();
   const { user, loading: authLoading, signOut } = useAuth();
   const { progress, loading } = useProgress();
-  const [subs, setSubs] = useState<Submission[] | null>(null);
+  const uid = user?.uid ?? null;
+  const [loaded, setLoaded] = useState<{ uid: string | null; subs: Submission[] } | null>(null);
 
+  // Signed-in students read from Firebase; guests read what this browser saved.
   useEffect(() => {
-    if (!authLoading && !user) router.replace("/login?next=/profile");
-  }, [authLoading, user, router]);
-
-  useEffect(() => {
-    if (user) loadSubmissions(user.uid).then(setSubs, (e) => {
-      console.error("Could not load submissions", e);
-      setSubs([]);
-    });
-  }, [user]);
+    if (authLoading) return;
+    loadSubmissions(uid).then(
+      (subs) => setLoaded({ uid, subs }),
+      (e) => {
+        console.error("Could not load submissions", e);
+        setLoaded({ uid, subs: [] });
+      },
+    );
+  }, [authLoading, uid]);
+  const subs = loaded && loaded.uid === uid ? loaded.subs : null;
 
   const solvedList = useMemo(
     () =>
@@ -38,7 +41,7 @@ export default function ProfilePage() {
     [progress],
   );
 
-  if (authLoading || !user || loading || !subs) {
+  if (authLoading || loading || !subs) {
     return (
       <div className="grid flex-1 place-items-center text-muted">
         <Spinner />
@@ -46,7 +49,7 @@ export default function ProfilePage() {
     );
   }
 
-  const name = user.displayName || user.email || "Student";
+  const name = user ? user.displayName || user.email || "Student" : "Guest";
   const accepted = subs.filter((s) => s.solved).length;
   const solvedBy = (d: Difficulty) => solvedList.filter((p) => PROBLEM_BY_ID[p.problemId].difficulty === d).length;
   const totalBy = (d: Difficulty) => PROBLEMS.filter((p) => p.difficulty === d).length;
@@ -58,14 +61,33 @@ export default function ProfilePage() {
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold tracking-tight">{name}</h1>
           <p className="text-sm text-muted">
-            {user.email}
-            {user.metadata.creationTime && <> · Member since {formatDate(new Date(user.metadata.creationTime))}</>}
+            {user ? (
+              <>
+                {user.email}
+                {user.metadata.creationTime && <> · Member since {formatDate(new Date(user.metadata.creationTime))}</>}
+              </>
+            ) : (
+              "Not signed in. Your progress is saved in this browser only."
+            )}
           </p>
         </div>
-        <button onClick={() => signOut().then(() => router.push("/"))} className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2">
-          Sign out
-        </button>
+        {user ? (
+          <button onClick={() => signOut().then(() => router.push("/"))} className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2">
+            Sign out
+          </button>
+        ) : (
+          <Link href="/login?next=/profile" className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90">
+            Sign in to sync
+          </Link>
+        )}
       </div>
+
+      {!user && (
+        <div className="rounded-xl border border-accent/30 bg-accent-soft px-5 py-4 text-sm leading-relaxed">
+          <span className="font-medium">Keep your progress safe.</span> Clearing browser data or switching devices will lose it. When you
+          sign in, everything saved here moves into your account automatically.
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <Card title="Progress">

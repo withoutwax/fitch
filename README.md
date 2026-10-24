@@ -1,7 +1,8 @@
 # Fitch
 
-A LeetCode-style practice site for Fitch natural deduction proofs. Students sign in, pick from 20 problems, build proofs in a
+A LeetCode-style practice site for Fitch natural deduction proofs. Students pick from 50 problems, build proofs in a
 line-by-line editor that checks every step as they type, and see what they've solved (and when) on their profile.
+No account is needed: guests' progress is saved in the browser, and moves into their Firebase account when they sign in.
 
 Built with Next.js (App Router) and Firebase (Auth + Firestore).
 
@@ -34,6 +35,11 @@ stops. Browse them at http://127.0.0.1:4000.
 5. Copy `.env.example` to `.env.local` (and to your hosting provider's env settings), fill in the web app config, and set
    `NEXT_PUBLIC_USE_FIREBASE_EMULATOR=false`.
 
+## Before going live
+
+Replace the placeholder operator name and contact email in `src/lib/site.ts`. They appear in the Privacy Policy (`/privacy`)
+and Terms of Service (`/terms`). Have those pages reviewed for your school or jurisdiction: they're a starting point, not legal advice.
+
 ## Data model
 
 ```
@@ -42,11 +48,13 @@ users/{uid}/progress/{problemId}   solved, attempts, firstSolvedAt, lastSolvedAt
 users/{uid}/submissions/{id}       problemId, solved, lineCount, at   (drives history + activity calendar)
 ```
 
+Guests get the same data in `localStorage` under `fitch:guest` (see `src/lib/localProgress.ts`).
+
 ## Project layout
 
 - `src/lib/fitch/formula.ts`: formula parser (Unicode and ASCII: `~ & | -> <-> # Ax Ex`), printer, and alpha-equivalence and substitution helpers
 - `src/lib/fitch/checker.ts`: proof checker covering subproof structure, line/subproof accessibility, and all 19 rules (LPL-style)
-- `src/lib/fitch/problems.ts`: the 20 problems. Model solutions live only in `checker.test.ts`, so answers never ship to the browser
+- `src/lib/fitch/problems.ts`: the 50 problems. Model solutions live only in `checker.test.ts`, so answers never ship to the browser
 - `src/components/ProofEditor.tsx`: the Fitch editor
 - `src/app/`: pages: `/problems`, `/problems/[id]`, `/profile`, `/login`, `/rules`
 

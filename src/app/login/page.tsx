@@ -8,6 +8,7 @@ import {
   updateProfile,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
@@ -110,6 +111,18 @@ function LoginForm() {
           {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
         </button>
       </form>
+
+      <p className="mt-4 text-center text-xs leading-relaxed text-muted">
+        By continuing, you agree to the{" "}
+        <Link href="/terms" className="underline hover:text-text">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" className="underline hover:text-text">
+          Privacy Policy
+        </Link>
+        .
+      </p>
 
       <p className="mt-6 text-center text-sm text-muted">
         {mode === "signin" ? "New here? " : "Already have an account? "}

@@ -21,7 +21,8 @@ export function NavBar() {
           Fitch
         </Link>
         <div className="flex items-center gap-1 text-sm">
-          {links.map((l) => (
+          {/* Signed-in students reach their profile through the avatar. */}
+          {(loading || user ? links : [...links, { href: "/profile", label: "Progress" }]).map((l) => (
             <Link
               key={l.href}
               href={l.href}

@@ -3,7 +3,7 @@
 import { onAuthStateChanged, signOut as fbSignOut, type User } from "firebase/auth";
 import { createContext, useContext, useEffect, useState } from "react";
 import { firebase } from "@/lib/firebase";
-import { ensureProfile } from "@/lib/progress";
+import { ensureProfile, importGuestProgress } from "@/lib/progress";
 
 interface AuthState {
   user: User | null;
@@ -19,10 +19,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const { auth } = firebase();
-    return onAuthStateChanged(auth, (u) => {
+    return onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        ensureProfile(u).catch((e) => console.error("Could not save profile", e));
+        // Finish moving any guest progress into the account before pages load progress.
+        await importGuestProgress(u.uid).catch((e) => console.error("Could not import progress saved in this browser", e));
+      }
       setUser(u);
       setLoading(false);
-      if (u) ensureProfile(u).catch((e) => console.error("Could not save profile", e));
     });
   }, []);
 

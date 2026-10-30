@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
-import { newId, ProofEditor } from "@/components/ProofEditor";
+import { ProofEditor } from "@/components/ProofEditor";
 import { CheckIcon, DifficultyText, formatDate, Spinner } from "@/components/ui";
+import { newId } from "@/lib/fitch/apply";
 import { checkProof, type ProofLine } from "@/lib/fitch/checker";
 import { parseFormula, show } from "@/lib/fitch/formula";
 import { PROBLEMS, type Problem } from "@/lib/fitch/problems";
@@ -196,8 +197,9 @@ export function Solver({ problem }: { problem: Problem }) {
               <li>
                 Cite lines like <Kbd>1, 3</Kbd> and subproofs like <Kbd>2-5</Kbd>.
               </li>
+              <li>Or tick the lines a rule uses and click its button below the proof to have the line added for you.</li>
               <li>
-                For ∀I and ∃E, start the subproof with a boxed constant: <Kbd>[c]</Kbd> or <Kbd>[c] P(c)</Kbd>.
+                For Universal Introduction and Existential Elimination, start the subproof with a boxed constant: <Kbd>[c]</Kbd> or <Kbd>[c] P(c)</Kbd>.
               </li>
             </ul>
             <Link href="/rules" target="_blank" className="mt-2 inline-block font-medium text-accent hover:underline">

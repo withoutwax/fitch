@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { deleteLines, lastDepth, needsSubproof, newId, runAction, withoutBlanks, type Action, type Prompt } from "@/lib/fitch/apply";
 import type { LineResult, ProofLine } from "@/lib/fitch/checker";
+import { prettify } from "@/lib/fitch/formula";
 import { RULE_BY_ID, RULES, type RuleId } from "@/lib/fitch/rules";
 import { CheckIcon } from "./ui";
 
@@ -23,8 +25,13 @@ const PALETTE: { sym: string; title: string }[] = [
 
 const GROUPS = ["Structural", "Propositional", "Quantifiers", "Identity"] as const;
 
-let idCounter = 0;
-export const newId = () => `l${Date.now().toString(36)}${(idCounter++).toString(36)}`;
+// Laid out like the button panel of Stanford's Fitch tool, one column at a time.
+const RULE_COLUMNS: (RuleId | "assume")[][] = [
+  ["notI", "notE", "andI", "andE", "orI", "orE"],
+  ["reit", "assume", "impI", "impE", "iffI", "iffE"],
+  ["allI", "allE", "exI", "exE"],
+  ["botI", "botE", "eqI", "eqE"],
+];
 
 /** Turn ASCII shorthands into logic symbols as the student types. */
 function liveSymbols(s: string) {
@@ -51,7 +58,54 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
   const [focusId, setFocusId] = useState<string | null>(null);
   // Where to put the caret once the next render (with the new lines) lands.
   const pendingFocus = useRef<{ id: string; caret?: number } | null>(null);
+  const [checked, setChecked] = useState<string[]>([]);
+  const [past, setPast] = useState<ProofLine[][]>([]);
+  const [future, setFuture] = useState<ProofLine[][]>([]);
+  // Consecutive typing in one line undoes as a single step.
+  const typingIn = useRef<string | null>(null);
+  const [pending, setPending] = useState<{ action: Action; prompt: Prompt } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
   const premiseCount = lines.filter((l) => l.kind === "premise").length;
+  const hasSubproof = lines.some((l) => l.kind === "assumption");
+  const allChecked = lines.length > 0 && lines.every((l) => checked.includes(l.id));
+
+  const toggle = (id: string) => setChecked((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
+
+  /** Change the proof, recording the current one for Undo. */
+  const commit = (next: ProofLine[]) => {
+    setPast([...past, lines]);
+    setFuture([]);
+    typingIn.current = null;
+    setChecked([]);
+    setPending(null);
+    setNotice(null);
+    onChange(next);
+  };
+
+  const restore = (from: ProofLine[][], to: ProofLine[][], setFrom: (s: ProofLine[][]) => void, setTo: (s: ProofLine[][]) => void) => {
+    const snap = from[from.length - 1];
+    if (!snap) return;
+    setFrom(from.slice(0, -1));
+    setTo([...to, lines]);
+    typingIn.current = null;
+    setChecked([]);
+    setPending(null);
+    setNotice(null);
+    onChange(snap);
+  };
+
+  const run = (action: Action, input?: string) => {
+    // The next line goes where the last row sits, and an empty row gives way to it.
+    const filled = withoutBlanks(lines);
+    const level = Math.min(lastDepth(lines), lastDepth(filled));
+    const out = runAction(action, { lines: filled, checked, level, input });
+    if (out.kind === "error") setNotice(out.error);
+    else if (out.kind === "prompt") {
+      setNotice(null);
+      setPending({ action, prompt: out.prompt });
+    } else commit(out.lines);
+  };
 
   const focusLine = (id: string, caret?: number) => {
     const el = inputs.current.get(id);
@@ -74,13 +128,20 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
   const focusedIndex = lines.findIndex((l) => l.id === focusId);
   const target = focusedIndex >= 0 ? focusedIndex : lines.length - 1;
 
-  const update = (i: number, patch: Partial<ProofLine>) => onChange(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
+  const update = (i: number, patch: Partial<ProofLine>) => {
+    if (typingIn.current !== lines[i].id) {
+      setPast([...past, lines]);
+      setFuture([]);
+      typingIn.current = lines[i].id;
+    }
+    onChange(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
+  };
 
   const insertAfter = (i: number, kind: "step" | "assumption", depth: number) => {
     const line: ProofLine = { id: newId(), depth: Math.max(0, depth), kind, text: "", rule: "", refs: "" };
     const next = [...lines];
     next.splice(i + 1, 0, line);
-    onChange(next);
+    commit(next);
     setPendingFocus({ id: line.id });
   };
 
@@ -91,10 +152,18 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
   };
   const removeLine = (i: number) => {
     if (lines[i]?.kind === "premise") return;
-    const next = lines.filter((_, k) => k !== i);
-    onChange(next);
+    const next = deleteLines(lines, [lines[i].id]).lines;
+    commit(next);
     const prev = next[Math.max(0, i - 1)];
     if (prev) setPendingFocus({ id: prev.id });
+  };
+  /** Delete line acts on the ticked lines if there are any, otherwise on the current one. */
+  const removeSelected = () => {
+    const ticked = lines.filter((l) => checked.includes(l.id) && l.kind !== "premise").map((l) => l.id);
+    if (!ticked.length) return removeLine(target);
+    const { lines: next, removed } = deleteLines(lines, ticked);
+    commit(next);
+    if (removed > ticked.length) setNotice(`Deleted ${removed} lines, including the ones that depended on them.`);
   };
 
   const insertSymbol = (sym: string) => {
@@ -162,19 +231,49 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
             End subproof
           </ToolButton>
           <ToolButton
-            onClick={() => removeLine(target)}
+            onClick={removeSelected}
             keys="Backspace on an empty line"
-            disabled={lines[target]?.kind === "premise" || lines.length <= premiseCount + 1}
+            disabled={!checked.some((id) => lines.find((l) => l.id === id)?.kind !== "premise") && (lines[target]?.kind === "premise" || lines.length <= premiseCount + 1)}
           >
             Delete line
+          </ToolButton>
+          <div className="mx-1 h-5 w-px bg-line" />
+          <ToolButton onClick={() => restore(past, future, setPast, setFuture)} keys="Undo the last change" disabled={!past.length}>
+            Undo
+          </ToolButton>
+          <ToolButton onClick={() => restore(future, past, setFuture, setPast)} keys="Redo" disabled={!future.length}>
+            Redo
+          </ToolButton>
+          <ToolButton onClick={() => setShowHelp(!showHelp)} keys="How the rule buttons work">
+            {showHelp ? "Hide help" : "Help"}
           </ToolButton>
         </div>
       )}
 
+      {!readOnly && showHelp && (
+        <p className="border-b border-line px-4 py-3 text-xs leading-relaxed text-muted">
+          You can type a line yourself, or tick the lines a rule uses and click its button to have the line added for you. And Introduction joins lines in
+          the order you ticked them. Rules that finish a subproof use the one you&apos;re in or the one that just ended; to use an earlier one, tick any line
+          inside it.
+        </p>
+      )}
+
       <div className="overflow-x-auto px-2 py-3">
         <div className="min-w-[560px]">
+          {!readOnly && (
+            <label className="flex h-8 cursor-pointer items-center text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={() => setChecked(allChecked ? [] : lines.map((l) => l.id))}
+                aria-label="Select all lines"
+                className="mx-1.5 accent-(--accent)"
+              />
+              <span className="ml-8 pl-2">Select All</span>
+            </label>
+          )}
           {premiseCount === 0 && (
-            <div className="relative ml-8 h-3">
+            <div className={`relative h-3 ${readOnly ? "ml-8" : "ml-14"}`}>
               <span className="absolute top-0 bottom-0 w-px bg-text/70" style={{ left: BAR_X }} />
               <span className="absolute bottom-1 h-px w-40 bg-text/70" style={{ left: BAR_X }} />
             </div>
@@ -186,6 +285,8 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
               line={line}
               result={results[i]}
               focused={focusId === line.id}
+              checked={checked.includes(line.id)}
+              onToggle={() => toggle(line.id)}
               barBelow={line.kind === "assumption" || (line.kind === "premise" && i === premiseCount - 1)}
               readOnly={readOnly}
               inputRef={(el) => {
@@ -202,7 +303,118 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
           ))}
         </div>
       </div>
+
+      {pending && (
+        <PromptPanel
+          key={pending.action}
+          prompt={pending.prompt}
+          onSubmit={(value) => run(pending.action, value)}
+          onCancel={() => {
+            setPending(null);
+            setNotice(null);
+          }}
+        />
+      )}
+
+      {notice && (
+        <p role="alert" className="border-t border-line bg-bad-soft px-4 py-2 text-sm text-bad">
+          {notice}
+        </p>
+      )}
+
+      {!readOnly && (
+        <div className="grid grid-cols-2 gap-x-1.5 gap-y-1 border-t border-line bg-surface-2/60 p-3 sm:grid-cols-4">
+          {RULE_COLUMNS.map((column, k) => (
+            <div key={k} className="flex flex-col gap-1">
+              {column.map((id) =>
+                id === "assume" ? (
+                  <RuleButton key={id} onClick={() => run(id)} title="Open a subproof with a new assumption.">
+                    Assumption
+                  </RuleButton>
+                ) : (
+                  <RuleButton
+                    key={id}
+                    onClick={() => run(id)}
+                    disabled={needsSubproof(id) && !hasSubproof}
+                    title={`${RULE_BY_ID[id].description} Uses ${RULE_BY_ID[id].cites}.`}
+                  >
+                    {RULE_BY_ID[id].name}
+                  </RuleButton>
+                ),
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+function PromptPanel({ prompt, onSubmit, onCancel }: { prompt: Prompt; onSubmit: (value: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(prompt.initial);
+  const input = useRef<HTMLInputElement>(null);
+
+  const insert = (sym: string) => {
+    const el = input.current;
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? value.length;
+    setValue(value.slice(0, start) + sym + value.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + sym.length, start + sym.length);
+    });
+  };
+
+  return (
+    <form
+      className="space-y-2 border-t border-line bg-accent-soft/50 px-4 py-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(value);
+      }}
+    >
+      <div>
+        <div className="text-sm font-semibold">{prompt.title}</div>
+        <p className="text-xs text-muted">{prompt.help}</p>
+      </div>
+      <input
+        ref={input}
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(prompt.term ? e.target.value : prettify(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onCancel();
+        }}
+        spellCheck={false}
+        autoComplete="off"
+        aria-label={prompt.title}
+        placeholder={prompt.placeholder}
+        className="h-9 w-full rounded-md border border-line bg-surface px-2 font-logic text-[15px] outline-none placeholder:text-muted/60 focus:border-accent"
+      />
+      <div className="flex flex-wrap items-center gap-1">
+        {!prompt.term &&
+          PALETTE.map((p) => (
+            <button
+              key={p.sym}
+              type="button"
+              title={p.title}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => insert(p.sym)}
+              className="grid h-8 w-8 place-items-center rounded-md font-logic text-[15px] text-text hover:bg-surface-2"
+            >
+              {p.sym}
+            </button>
+          ))}
+        <div className="ml-auto flex gap-1">
+          <button type="button" onClick={onCancel} className="rounded-md px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-text">
+            Cancel
+          </button>
+          <button type="submit" className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:opacity-90">
+            Add
+          </button>
+        </div>
+      </div>
+    </form>
   );
 }
 
@@ -230,11 +442,26 @@ function ToolButton({
   );
 }
 
+function RuleButton({ children, onClick, disabled, title }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; title: string }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="min-h-9 rounded-md border border-line bg-surface px-1.5 py-1 text-xs leading-tight font-medium text-text hover:border-accent hover:bg-accent-soft disabled:pointer-events-none disabled:opacity-40"
+    >
+      {children}
+    </button>
+  );
+}
+
 interface RowProps {
   index: number;
   line: ProofLine;
   result?: LineResult;
   focused: boolean;
+  checked: boolean;
+  onToggle: () => void;
   barBelow: boolean;
   readOnly?: boolean;
   inputRef: (el: HTMLInputElement | null) => void;
@@ -246,14 +473,19 @@ interface RowProps {
   onRefsEnter: () => void;
 }
 
-function Row({ index, line, result, focused, barBelow, readOnly, inputRef, onFocus, onText, onKey, onRule, onRefs, onRefsEnter }: RowProps) {
+function Row({ index, line, result, focused, checked, onToggle, barBelow, readOnly, inputRef, onFocus, onText, onKey, onRule, onRefs, onRefsEnter }: RowProps) {
   const isStep = line.kind === "step";
   const blank = !line.text.trim() && (!isStep || (!line.rule && !line.refs.trim()));
   const showError = result && !result.ok && !blank;
   const textLeft = BAR_X + line.depth * INDENT + 10;
 
   return (
-    <div className={`group flex h-10 items-stretch rounded-md ${focused ? "bg-accent-soft/60" : ""}`}>
+    <div className={`group flex h-10 items-stretch rounded-md ${focused || checked ? "bg-accent-soft/60" : ""}`}>
+      {!readOnly && (
+        <div className="flex w-6 shrink-0 items-center justify-center">
+          <input type="checkbox" checked={checked} onChange={onToggle} aria-label={`Select line ${index + 1}`} className="accent-(--accent)" />
+        </div>
+      )}
       <div className="w-8 shrink-0 self-center pr-2 text-right font-logic text-xs text-muted tabular-nums">{index + 1}</div>
 
       <div className="relative min-w-0 flex-1">

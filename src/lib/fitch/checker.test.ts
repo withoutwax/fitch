@@ -31,10 +31,10 @@ describe("parser", () => {
 });
 
 describe("problems", () => {
-  it("has 50 problems, each with a model solution", () => {
-    expect(PROBLEMS).toHaveLength(50);
+  it("has 58 problems, each with a model solution", () => {
+    expect(PROBLEMS).toHaveLength(58);
     expect(PROBLEMS.map((p) => p.number)).toEqual(PROBLEMS.map((_, i) => i + 1));
-    expect(new Set(PROBLEMS.map((p) => p.id)).size).toBe(50);
+    expect(new Set(PROBLEMS.map((p) => p.id)).size).toBe(58);
     for (const p of PROBLEMS) expect(SOLUTIONS[p.id], p.id).toBeDefined();
   });
 

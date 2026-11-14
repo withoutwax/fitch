@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useNotation } from "@/components/NotationProvider";
 import { reportPresence } from "@/components/PresenceTracker";
 import { ProofEditor } from "@/components/ProofEditor";
+import { ReportBug } from "@/components/ReportBug";
 import { CheckIcon, DifficultyText, formatDate, Spinner } from "@/components/ui";
 import { newId } from "@/lib/fitch/apply";
 import { checkProof, type ProofLine } from "@/lib/fitch/checker";
@@ -267,9 +268,12 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
       <section className="flex min-w-0 flex-col rounded-xl border border-line bg-surface">
         <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
           <h2 className="text-sm font-semibold">Proof</h2>
-          <button onClick={reset} className="text-xs text-muted hover:text-text">
-            Reset
-          </button>
+          <div className="flex items-center gap-4">
+            <ReportBug problemId={problem.id} problemTitle={`${problem.number}. ${problem.title}`} lines={lines} />
+            <button onClick={reset} className="text-xs text-muted hover:text-text">
+              Reset
+            </button>
+          </div>
         </div>
 
         <div className="flex-1">

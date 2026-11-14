@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { addDoc, doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 
 // Runs against the Firestore emulator: npm run test:rules
@@ -254,5 +254,79 @@ describe("presence", () => {
     await assertFails(getDoc(doc(as("alice"), "presence/alice")));
     await assertFails(getDocs(collection(as("bob"), "presence")));
     await assertFails(getDocs(collection(guest(), "presence")));
+  });
+});
+
+describe("bug reports", () => {
+  const report = (over: Record<string, unknown> = {}) => ({
+    problemId: "p1",
+    problemTitle: "1. One",
+    message: "My proof is right but it is rejected.",
+    proof: [{ depth: 0, kind: "premise", text: "P", rule: "", refs: "" }],
+    path: "/problems/p1",
+    uid: null,
+    email: null,
+    status: "open",
+    createdAt: serverTimestamp(),
+    ...over,
+  });
+  const alice = () => as("alice", { email: "alice@example.com" });
+  const mine = { uid: "alice", email: "alice@example.com" };
+
+  beforeEach(() => env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "bugReports/r1"), report({ createdAt: new Date(0) }))));
+
+  it("guests and signed-in users send reports", async () => {
+    await assertSucceeds(addDoc(collection(guest(), "bugReports"), report()));
+    await assertSucceeds(addDoc(collection(alice(), "bugReports"), report(mine)));
+    // An account with no email on its token reports with a null email.
+    await assertSucceeds(addDoc(collection(as("bob"), "bugReports"), report({ uid: "bob" })));
+  });
+
+  it("a report cannot claim to be from someone else", async () => {
+    await assertFails(addDoc(collection(guest(), "bugReports"), report(mine)));
+    await assertFails(addDoc(collection(guest(), "bugReports"), report({ email: "alice@example.com" })));
+    await assertFails(addDoc(collection(as("bob"), "bugReports"), report(mine)));
+    await assertFails(addDoc(collection(alice(), "bugReports"), report({ ...mine, email: "tina@example.com" })));
+    await assertFails(addDoc(collection(alice(), "bugReports"), report()));
+  });
+
+  it("a report must be well-formed and within the size caps", async () => {
+    const send = (over: Record<string, unknown>) => addDoc(collection(guest(), "bugReports"), report(over));
+    await assertSucceeds(send({ message: "x".repeat(2000), proof: Array(200).fill({}) }));
+    await assertFails(send({ message: "" }));
+    await assertFails(send({ message: "x".repeat(2001) }));
+    await assertFails(send({ message: 42 }));
+    await assertFails(send({ proof: Array(201).fill({}) }));
+    await assertFails(send({ proof: "P" }));
+    await assertFails(send({ path: "x".repeat(201) }));
+    await assertFails(send({ status: "resolved" }));
+    await assertFails(send({ createdAt: new Date(0) }));
+    await assertFails(send({ role: "admin" }));
+    const withoutMessage: Record<string, unknown> = report();
+    delete withoutMessage.message;
+    await assertFails(addDoc(collection(guest(), "bugReports"), withoutMessage));
+  });
+
+  it("only admins read reports", async () => {
+    await assertSucceeds(getDocs(collection(as("adam"), "bugReports")));
+    await assertSucceeds(getDoc(doc(as("adam"), "bugReports/r1")));
+    await assertFails(getDocs(collection(as("tina"), "bugReports")));
+    await assertFails(getDoc(doc(as("alice"), "bugReports/r1")));
+    await assertFails(getDoc(doc(guest(), "bugReports/r1")));
+  });
+
+  it("only admins resolve and reopen reports, and change nothing else", async () => {
+    await assertSucceeds(updateDoc(doc(as("adam"), "bugReports/r1"), { status: "resolved" }));
+    await assertSucceeds(updateDoc(doc(as("adam"), "bugReports/r1"), { status: "open" }));
+    await assertFails(updateDoc(doc(as("adam"), "bugReports/r1"), { status: "wontfix" }));
+    await assertFails(updateDoc(doc(as("adam"), "bugReports/r1"), { message: "edited" }));
+    await assertFails(updateDoc(doc(as("tina"), "bugReports/r1"), { status: "resolved" }));
+    await assertFails(updateDoc(doc(as("alice"), "bugReports/r1"), { status: "resolved" }));
+    await assertFails(updateDoc(doc(guest(), "bugReports/r1"), { status: "resolved" }));
+  });
+
+  it("nobody deletes reports", async () => {
+    await assertFails(deleteDoc(doc(as("adam"), "bugReports/r1")));
+    await assertFails(deleteDoc(doc(guest(), "bugReports/r1")));
   });
 });

@@ -1,5 +1,5 @@
 // Sign-up consent, stored on users/{uid}.consent. Korean PIPA asks for privacy
-// consent separately from the terms, with optional items kept optional, and a
+// consent separately from the terms, each item as its own checkbox, and a
 // parent's consent for children under 14.
 
 /** Bump when the Terms or Privacy Policy change in a way users must re-accept. */
@@ -9,7 +9,7 @@ export interface Consent {
   version: string;
   terms: boolean;
   privacy: boolean;
-  /** Optional: live activity visible to teachers (presence/{uid}). */
+  /** Required: live activity visible to teachers (presence/{uid}). */
   activity: boolean;
   /** 14 or older, or a parent or guardian agreed. */
   age: boolean;
@@ -23,4 +23,4 @@ export function parseConsent(v: unknown): Consent | null {
 }
 
 /** Whether the user has accepted everything required in the current version. */
-export const hasRequiredConsent = (c: Consent | null) => !!c && c.version === CONSENT_VERSION && c.terms && c.privacy && c.age;
+export const hasRequiredConsent = (c: Consent | null) => !!c && c.version === CONSENT_VERSION && c.terms && c.privacy && c.age && c.activity;

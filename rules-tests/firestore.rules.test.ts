@@ -162,20 +162,26 @@ describe("consent", () => {
     terms: true,
     privacy: true,
     age: true,
-    activity: false,
+    activity: true,
     at: serverTimestamp(),
     ...over,
   });
 
   it("the owner records their consent", async () => {
     await assertSucceeds(setDoc(doc(as("alice"), "users/alice"), { consent: consent() }, { merge: true }));
-    await assertSucceeds(setDoc(doc(as("bob"), "users/bob"), { displayName: "Bob", consent: consent({ activity: true }) }));
+    await assertSucceeds(setDoc(doc(as("bob"), "users/bob"), { displayName: "Bob", consent: consent() }));
   });
 
   it("consent must be well-formed and use the server time", async () => {
     await assertFails(setDoc(doc(as("alice"), "users/alice"), { consent: consent({ at: new Date(0) }) }, { merge: true }));
     await assertFails(setDoc(doc(as("alice"), "users/alice"), { consent: consent({ terms: "yes" }) }, { merge: true }));
     await assertFails(setDoc(doc(as("alice"), "users/alice"), { consent: consent({ extra: 1 }) }, { merge: true }));
+  });
+
+  it("every item, live activity included, must be agreed to", async () => {
+    for (const item of ["terms", "privacy", "age", "activity"]) {
+      await assertFails(setDoc(doc(as("alice"), "users/alice"), { consent: consent({ [item]: false }) }, { merge: true }));
+    }
   });
 
   it("other profile edits keep working after consent", async () => {
@@ -220,7 +226,7 @@ describe("presence", () => {
     await assertSucceeds(deleteDoc(doc(as("alice"), "presence/alice")));
   });
 
-  it("a student who did not opt in cannot write presence", async () => {
+  it("a student without activity consent (e.g. an older account) cannot write presence", async () => {
     await assertFails(setDoc(doc(as("bob"), "presence/bob"), presence("bob")));
     await env.withSecurityRulesDisabled((ctx) =>
       setDoc(doc(ctx.firestore(), "users/alice"), { consent: { activity: false } }, { merge: true }),

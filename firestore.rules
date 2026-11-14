@@ -32,11 +32,11 @@ service cloud.firestore {
     }
 
     // Sign-up consent (src/components/ConsentGate.tsx). Written only by the owner,
-    // whole, with the server time.
+    // whole, with the server time. Every item, live activity included, is required.
     function validConsent() {
       let c = request.resource.data.consent;
       return c.keys().hasOnly(['version', 'terms', 'privacy', 'age', 'activity', 'at'])
-        && c.version is string && c.terms is bool && c.privacy is bool && c.age is bool && c.activity is bool
+        && c.version is string && c.terms == true && c.privacy == true && c.age == true && c.activity == true
         && c.at == request.time;
     }
 

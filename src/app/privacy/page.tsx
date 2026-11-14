@@ -39,8 +39,7 @@ export default function PrivacyPage() {
 
       <Section id="activity" title="Live activity seen by teachers">
         <p>
-          This is optional: you choose whether to allow it when you agree to this policy, and saying no doesn&apos;t limit your use of the site. If
-          you allow it, while you are signed in as a student your browser tells us what you are doing on the site right now so teachers and admins can help: which
+          Agreeing to this is required to use an account; you can still solve problems as a guest without it. While you are signed in as a student your browser tells us what you are doing on the site right now so teachers and admins can help: which
           page and problem you have open and since when, how many lines your proof has, whether you are idle (no input for 2 minutes or the tab is in
           the background), when you were last online, and your last few submissions and whether they were accepted. It is updated about every 30
           seconds while the site is open. We keep only your latest status, not a history. Guests who aren&apos;t signed in are not tracked.

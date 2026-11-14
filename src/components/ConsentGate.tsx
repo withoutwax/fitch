@@ -11,7 +11,7 @@ import { Spinner } from "./ui";
 
 // Shown to every signed-in user until they accept the current terms and
 // privacy consent (new sign-ups, and existing accounts on their next visit).
-// Required items are separate checkboxes; activity sharing is optional.
+// Every item is required and has its own checkbox, including live activity sharing.
 export function ConsentGate() {
   const { user, consent, signOut } = useAuth();
   const path = usePathname();
@@ -55,7 +55,7 @@ export function ConsentGate() {
 
         <label className="mt-5 flex items-center gap-2 border-b border-line pb-3 text-sm font-medium">
           <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
-          Agree to all, including the optional item
+          Agree to all
         </label>
 
         <div className="mt-3 space-y-3 text-sm">
@@ -76,16 +76,16 @@ export function ConsentGate() {
           <Item checked={age} onChange={setAge} required>
             I am 14 or older, or my parent or guardian has agreed to these terms for me.
           </Item>
-          <Item checked={activity} onChange={setActivity}>
+          <Item checked={activity} onChange={setActivity} required>
             Let my teachers see my{" "}
             <Link href="/privacy#activity" target="_blank" className="text-accent hover:underline">
               live activity
             </Link>{" "}
-            (the problem I have open, how long, proof length, idle or offline, recent submissions). You can still use the site if you say no.
+            (the problem I have open, how long, proof length, idle or offline, recent submissions).
           </Item>
         </div>
 
-        <p className="mt-4 text-xs text-muted">You may refuse the required items, but you then can&apos;t use an account. You can still solve problems as a guest.</p>
+        <p className="mt-4 text-xs text-muted">You may refuse, but you then can&apos;t use an account. You can still solve problems as a guest.</p>
         {error && <p className="mt-3 rounded-md bg-bad-soft px-3 py-2 text-sm text-bad">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
@@ -94,7 +94,7 @@ export function ConsentGate() {
           </button>
           <button
             onClick={save}
-            disabled={busy || !terms || !privacy || !age}
+            disabled={busy || !all}
             className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
           >
             {busy && <Spinner className="h-3.5 w-3.5" />}

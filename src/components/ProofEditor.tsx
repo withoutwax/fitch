@@ -271,7 +271,8 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
       )}
 
       <div className="overflow-x-auto px-2 py-3">
-        <div className="min-w-[560px]">
+        {/* Full rule names in Simplified Symbols need a wider rule column. */}
+        <div className={notation === "simplified" ? "min-w-[690px]" : "min-w-[560px]"}>
           {!readOnly && (
             <label className="flex h-8 cursor-pointer items-center text-xs text-muted">
               <input
@@ -499,8 +500,11 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
   const blank = !line.text.trim() && (!isStep || (!line.rule && !line.refs.trim()));
   const showError = result && !result.ok && !blank;
   const textLeft = BAR_X + line.depth * INDENT + 10;
-  const { fmt } = useNotation();
+  const { notation, fmt } = useNotation();
   const text = fmt(line.text);
+  // Simplified Symbols spells rules out ("Implication Introduction") instead of using symbol labels ("→I").
+  const words = notation === "simplified";
+  const ruleName = (r: (typeof RULES)[number]) => (words ? r.name : fmt(r.label));
 
   return (
     <div className={`group flex h-10 items-stretch rounded-md ${focused || checked ? "bg-accent-soft/60" : ""}`}>
@@ -544,12 +548,14 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
         />
       </div>
 
-      <div className="flex w-20 shrink-0 items-center">
+      <div className={`flex shrink-0 items-center ${words ? "w-52" : "w-20"}`}>
         {isStep ? (
-          // The native select lists full rule names; the overlay shows just the short label once chosen.
+          // The native select lists full rule names; the overlay shows the chosen rule's label (or name, in Simplified Symbols).
           <div className="relative h-8 w-full rounded-md border border-transparent hover:border-line has-[select:focus]:border-accent">
-            <span className={`pointer-events-none absolute inset-0 flex items-center justify-between px-2 font-logic text-sm ${line.rule ? "text-text" : "text-muted"}`}>
-              {line.rule ? fmt(RULE_BY_ID[line.rule].label) : <span className="font-sans">Rule…</span>}
+            <span
+              className={`pointer-events-none absolute inset-0 flex items-center justify-between gap-1 px-2 ${words ? "font-sans text-[13px]" : "font-logic text-sm"} ${line.rule ? "text-text" : "text-muted"}`}
+            >
+              {line.rule ? <span className="truncate">{ruleName(RULE_BY_ID[line.rule])}</span> : <span className="font-sans">Rule…</span>}
               {!readOnly && <span className="text-[10px] text-muted">▾</span>}
             </span>
           <select
@@ -565,7 +571,7 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
               <optgroup key={g} label={g}>
                 {RULES.filter((r) => r.group === g).map((r) => (
                   <option key={r.id} value={r.id}>
-                    {fmt(r.label)} {r.name}
+                    {words ? r.name : `${fmt(r.label)} ${r.name}`}
                   </option>
                 ))}
               </optgroup>

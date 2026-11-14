@@ -1,5 +1,5 @@
-import { checkProof, parseAssumption, parseRefs, type ProofLine } from "./checker";
-import { equal, parseFormula, prettify, show, type Formula } from "./formula";
+import { checkProof, parseRefs, type ProofLine } from "./checker";
+import { equal, freeNames, parseFormula, prettify, show, type Formula } from "./formula";
 import { RULE_BY_ID, type RuleId } from "./rules";
 
 // The button-driven way of building a proof: tick lines, click a rule, and the
@@ -95,7 +95,8 @@ function freshVariable(f: Formula): string {
   return ["x", "y", "z", "u", "v", "w"].find((v) => !used.has(v)) ?? "x";
 }
 
-const NEEDS_SUBPROOF: Partial<Record<RuleId, number>> = { impI: 1, notI: 1, allI: 1, exE: 1, iffI: 2, orE: 2 };
+// As in Stanford's Fitch, only these two rules discharge a subproof.
+const NEEDS_SUBPROOF: Partial<Record<RuleId, number>> = { impI: 1, botE: 1 };
 
 export function needsSubproof(rule: RuleId) {
   return rule in NEEDS_SUBPROOF;
@@ -129,19 +130,9 @@ function attemptAction(action: Action, { lines, checked, level, input }: Attempt
     return { direct, closed };
   };
 
-  const formulaAt = (j: number): Formula => {
-    if (lines[j].kind === "assumption") {
-      const f = parseAssumption(lines[j].text).formula;
-      if (!f) fail(`Line ${j + 1} only introduces a boxed constant`);
-      return f;
-    }
-    return parseFormula(lines[j].text);
-  };
+  const formulaAt = (j: number): Formula => parseFormula(lines[j].text);
 
-  const describe = (s: Sub) => {
-    const { boxed, formula } = parseAssumption(lines[s.start].text);
-    return { boxed, assumption: formula, last: s.end === s.start ? formula : formulaAt(s.end), range: `${s.start + 1}-${s.end + 1}` };
-  };
+  const describe = (s: Sub) => ({ assumption: formulaAt(s.start), last: formulaAt(s.end), range: `${s.start + 1}-${s.end + 1}` });
 
   // Rules that discharge subproofs take the ticked ones. Failing that they use
   // the one that just ended, and then the innermost one still open, closing it.
@@ -193,7 +184,7 @@ function attemptAction(action: Action, { lines, checked, level, input }: Attempt
     if (input === undefined)
       return ask({
         title: "Assumption",
-        help: "Enter the assumption to make. For Universal Introduction or Existential Elimination, begin with a boxed constant: [c] or [c] P(c).",
+        help: "Enter the assumption to make. Close it with Implication Introduction, or with False Elimination once you reach ⊥.",
         initial: "",
         placeholder: "P ∧ Q",
       });
@@ -242,48 +233,53 @@ function attemptAction(action: Action, { lines, checked, level, input }: Attempt
     }
 
     case "orE": {
-      const { depth, direct, closed } = withSubproofs(2);
-      if (direct.length !== 1) fail("Tick the disjunction and a line in each subproof.");
-      const { last } = describe(closed[0]);
-      if (!last) fail(`The subproof starting at line ${closed[0].start + 1} has no conclusion.`);
-      return finish([step(last, [refOf(direct), ...closed.map((s) => describe(s).range)].join(", "), depth)]);
+      const [x, y, z] = onlyLines(3, "the disjunction P ∨ Q and the conditionals P → R and Q → R");
+      const fs = [x, y, z].map(formulaAt);
+      const d = fs.find((f) => f.t === "or");
+      if (d?.t !== "or") fail("None of the ticked lines is a disjunction.");
+      const from = (side: Formula) => fs.find((f) => f.t === "imp" && equal(f.a, side));
+      const p = from(d.a);
+      const q = from(d.b);
+      if (p?.t !== "imp" || q?.t !== "imp" || !equal(p.b, q.b)) fail("Tick P ∨ Q with P → R and Q → R, both ending in the same R.");
+      return finish([step(p.b, refOf([x, y, z]))]);
     }
 
     case "impI": {
       const { depth, closed } = withSubproofs(1);
-      const { assumption, last, boxed, range } = describe(closed[0]);
-      if (boxed || !assumption || !last) fail("Implication Introduction needs an ordinary subproof, not one with a boxed constant.");
+      const { assumption, last, range } = describe(closed[0]);
       return finish([step({ t: "imp", a: assumption, b: last }, range, depth)]);
     }
 
-    case "impE":
-    case "iffE": {
-      const [x, y] = onlyLines(2, rule === "impE" ? "the implication and its antecedent" : "the biconditional and one side of it");
+    case "impE": {
+      const [x, y] = onlyLines(2, "the implication and its antecedent");
       const [p, q] = [formulaAt(x), formulaAt(y)];
-      const result = (c: Formula, o: Formula) => {
-        if (c.t === "imp" && rule === "impE" && equal(c.a, o)) return c.b;
-        if (c.t === "iff" && rule === "iffE" && equal(c.a, o)) return c.b;
-        if (c.t === "iff" && rule === "iffE" && equal(c.b, o)) return c.a;
-        return null;
-      };
+      const result = (c: Formula, o: Formula) => (c.t === "imp" && equal(c.a, o) ? c.b : null);
       const f = result(p, q) ?? result(q, p);
-      if (!f) fail(rule === "impE" ? "Those lines aren't an implication and its antecedent." : "Those lines aren't a biconditional and one of its sides.");
+      if (!f) fail("Those lines aren't an implication and its antecedent.");
       return finish([step(f, refOf([x, y]))]);
     }
 
     case "iffI": {
-      const { depth, closed } = withSubproofs(2);
-      const [one, two] = closed.map(describe);
-      if (!one.assumption || !one.last) fail("Biconditional Introduction needs two ordinary subproofs.");
-      return finish([step({ t: "iff", a: one.assumption, b: one.last }, `${one.range}, ${two.range}`, depth)]);
+      const [x, y] = onlyLines(2, "the two conditionals P → Q and Q → P");
+      const [p, q] = [formulaAt(x), formulaAt(y)];
+      if (!(p.t === "imp" && q.t === "imp" && equal(p.a, q.b) && equal(p.b, q.a))) fail("Those lines aren't two conditionals P → Q and Q → P.");
+      return finish([step({ t: "iff", a: p.a, b: p.b }, refOf([x, y]))]);
+    }
+
+    case "iffE": {
+      const [j] = onlyLines(1, "one biconditional");
+      const f = formulaAt(j);
+      if (f.t !== "iff") fail(`Line ${j + 1} is not a biconditional.`);
+      const both = [{ t: "imp", a: f.a, b: f.b }, { t: "imp", a: f.b, b: f.a }] as Formula[];
+      return finish((equal(f.a, f.b) ? both.slice(0, 1) : both).map((g) => step(g, refOf([j]))));
     }
 
     case "notI": {
-      const { depth, closed } = withSubproofs(1);
-      const { assumption, last, boxed, range } = describe(closed[0]);
-      if (boxed || !assumption) fail("Negation Introduction needs an ordinary subproof, not one with a boxed constant.");
-      if (last?.t !== "bot") fail("The subproof must end with ⊥. Use False Introduction first.");
-      return finish([step({ t: "not", a: assumption }, range, depth)]);
+      const [x, y] = onlyLines(2, "two conditionals P → Q and P → ¬Q");
+      const [p, q] = [formulaAt(x), formulaAt(y)];
+      const pair = (a: Formula, b: Formula) => a.t === "imp" && b.t === "imp" && equal(a.a, b.a) && b.b.t === "not" && equal(b.b.a, a.b);
+      if (!pair(p, q) && !pair(q, p)) fail("Those lines aren't two conditionals P → Q and P → ¬Q with the same P.");
+      return finish([step({ t: "not", a: (p as Extract<Formula, { t: "imp" }>).a }, refOf([x, y]))]);
     }
 
     case "notE": {
@@ -299,10 +295,10 @@ function attemptAction(action: Action, { lines, checked, level, input }: Attempt
     }
 
     case "botE": {
-      const [j] = onlyLines(1, "the line with ⊥");
-      if (input === undefined)
-        return ask({ title: "False Elimination", help: "⊥ implies anything. Enter the formula to conclude.", initial: "", placeholder: "P" });
-      return finish([step(entered(), refOf([j]))]);
+      const { depth, closed } = withSubproofs(1);
+      const { assumption, last, range } = describe(closed[0]);
+      if (last.t !== "bot") fail("The subproof must end with ⊥. Use False Introduction first.");
+      return finish([step({ t: "not", a: assumption }, range, depth)]);
     }
 
     case "eqI": {
@@ -325,13 +321,19 @@ function attemptAction(action: Action, { lines, checked, level, input }: Attempt
     }
 
     case "allI": {
-      const { depth, closed } = withSubproofs(1);
-      const { boxed, assumption, last, range } = describe(closed[0]);
-      if (!boxed) fail("Universal Introduction needs a subproof that begins with a boxed constant, like [c].");
-      if (!last) fail("The subproof must reach a conclusion first.");
-      const target: Formula = assumption ? { t: "imp", a: assumption, b: last } : last;
-      const v = freshVariable(target);
-      return finish([step({ t: "all", v, body: substitute(target, boxed, v) }, range, depth)]);
+      const [j] = onlyLines(1, "the line to generalize");
+      const f = formulaAt(j);
+      if (input === undefined)
+        return ask({
+          title: "Universal Introduction",
+          help: "Enter the name to replace with a variable. It must not appear in any premise or open assumption.",
+          initial: [...freeNames(f)][0] ?? "",
+          placeholder: "c",
+          term: true,
+        });
+      const name = enteredName();
+      const v = freshVariable(f);
+      return finish([step({ t: "all", v, body: substitute(f, name, v) }, refOf([j]))]);
     }
 
     case "allE": {
@@ -356,11 +358,11 @@ function attemptAction(action: Action, { lines, checked, level, input }: Attempt
     }
 
     case "exE": {
-      const { depth, direct, closed } = withSubproofs(1);
-      if (direct.length !== 1) fail("Tick the existential and a line in the subproof.");
-      const { last, range } = describe(closed[0]);
-      if (!last) fail("The subproof must reach a conclusion first.");
-      return finish([step(last, `${refOf(direct)}, ${range}`, depth)]);
+      const [x, y] = onlyLines(2, "the existential ∃x P(x) and the universal ∀x (P(x) → Q)");
+      const [p, q] = [formulaAt(x), formulaAt(y)];
+      const u = p.t === "all" ? p : q;
+      if (u.t !== "all" || u.body.t !== "imp") fail("Tick ∃x P(x) and ∀x (P(x) → Q).");
+      return finish([step(u.body.b, refOf([x, y]))]);
     }
   }
 }

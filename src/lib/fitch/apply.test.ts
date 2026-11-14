@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { deleteLines, runAction, withoutBlanks, type Action } from "./apply";
-import { checkProof, parseAssumption, type ProofLine } from "./checker";
+import { checkProof, type ProofLine } from "./checker";
 import { equal, instanceTerm, parseFormula, type Formula } from "./formula";
 import { PROBLEMS } from "../../../seed/problems";
 import { build, SOLUTIONS, type Row } from "../../../seed/solutions";
 
-const parseLine = (l: ProofLine) => (l.kind === "assumption" ? parseAssumption(l.text).formula! : parseFormula(l.text));
+const parseLine = (l: ProofLine) => parseFormula(l.text);
 
 /** Rebuild a model proof using only what the buttons can do. */
 function replay(rows: Row[]): ProofLine[] {
@@ -25,7 +25,11 @@ function replay(rows: Row[]): ProofLine[] {
       input = text;
       if (first.prompt.term) {
         if (rule === "eqI") input = (parseFormula(text) as { l: string }).l;
-        else {
+        else if (rule === "allI") {
+          // The name the cited line has where the universal has its variable.
+          const g = parseFormula(text) as Extract<Formula, { t: "all" }>;
+          input = (instanceTerm(g.body, g.v, parseLine(lines.find((l) => l.id === checked[0])!)) || "zz") as string;
+        } else {
           const g = parseLine(lines.find((l) => l.id === checked[0])!) as Extract<Formula, { t: "all" | "ex" }>;
           input = (instanceTerm(g.body, g.v, parseFormula(text)) || "a") as string;
         }
@@ -38,7 +42,7 @@ function replay(rows: Row[]): ProofLine[] {
       lines = out.lines;
       continue;
     }
-    // And Elimination adds both conjuncts; keep the one this proof uses.
+    // And and Biconditional Elimination add both results; keep the one this proof uses.
     const keep = fresh.find((l) => equal(parseFormula(l.text), parseFormula(text)));
     if (!keep) throw new Error(`${rule} ${refs} gave ${fresh.map((l) => l.text).join(" / ")}, wanted ${text}`);
     lines = [...lines, keep];
@@ -93,6 +97,37 @@ describe("rule buttons", () => {
     const lines = start("P");
     expect(runAction("orI", { lines, checked: [lines[0].id], level: 0 }).kind).toBe("prompt");
     expect(runAction("orI", { lines, checked: [], level: 0 }).kind).toBe("error");
+  });
+
+  it("Negation Introduction takes P → Q and P → ¬Q", () => {
+    const lines = start("P → Q", "P → ¬Q");
+    const out = runAction("notI", { lines, checked: [lines[1].id, lines[0].id], level: 0 });
+    expect(out.kind === "done" && [out.lines[2].text, out.lines[2].refs]).toEqual(["¬P", "2, 1"]);
+  });
+
+  it("Negation Introduction refuses a subproof", () => {
+    const lines = build([[0, "¬Q", "P"], [1, "Q", "A"], [1, "⊥", "botI", "2, 1"]]);
+    expect(runAction("notI", { lines, checked: [lines[1].id], level: 1 }).kind).toBe("error");
+  });
+
+  it("False Elimination closes a subproof ending in ⊥ with ¬P", () => {
+    const lines = build([[0, "¬Q", "P"], [1, "Q", "A"], [1, "⊥", "botI", "2, 1"]]);
+    const out = runAction("botE", { lines, checked: [], level: 1 });
+    expect(out.kind === "done" && [out.lines[3].text, out.lines[3].depth, out.lines[3].refs]).toEqual(["¬Q", 0, "2-3"]);
+  });
+
+  it("Biconditional Elimination adds both conditionals", () => {
+    const lines = start("P ↔ Q");
+    const out = runAction("iffE", { lines, checked: [lines[0].id], level: 0 });
+    expect(out.kind === "done" && out.lines.slice(1).map((l) => l.text)).toEqual(["P → Q", "Q → P"]);
+  });
+
+  it("Universal Introduction generalizes a name not in any premise", () => {
+    const lines = build([[0, "∀x P(x)", "P"], [0, "P(c)", "allE", "1"]]);
+    const out = runAction("allI", { lines, checked: [lines[1].id], level: 0, input: "c" });
+    expect(out.kind === "done" && out.lines[2].text).toBe("∀x P(x)");
+    const bad = start("P(c)");
+    expect(runAction("allI", { lines: bad, checked: [bad[0].id], level: 0, input: "c" }).kind).toBe("error");
   });
 
   it("rejects an entered formula the rule can't produce", () => {

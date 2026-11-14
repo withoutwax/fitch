@@ -77,28 +77,41 @@ describe("checker rejects bad proofs", () => {
     expect(r.solved).toBe(false);
   });
 
-  it("boxed constant that is not new", () => {
-    const r = checkProof(
-      build([
-        [0, "P(c)", "P"],
-        [1, "[c]", "A"],
-        [1, "P(c)", "reit", "1"],
-        [0, "∀x P(x)", "allI", "2-3"],
-      ]),
-      goal("∀x P(x)"),
-    );
-    expect(r.lines[1].error).toMatch(/must be new/);
+  it("¬I from a subproof, the old way", () => {
+    const r = checkProof(build([[0, "¬Q", "P"], [1, "Q", "A"], [1, "⊥", "botI", "2, 1"], [0, "¬Q", "notI", "2-3"]]));
+    expect(r.lines[3].error).toMatch(/cites two lines/);
   });
 
-  it("∃E conclusion mentioning the boxed constant", () => {
-    const r = checkProof(
-      build([
-        [0, "∃x P(x)", "P"],
-        [1, "[c] P(c)", "A"],
-        [0, "P(c)", "exE", "1, 2"],
-      ]),
-    );
-    expect(r.lines[2].error).toMatch(/can't appear in the conclusion/);
+  it("¬I with conditionals that don't contradict", () => {
+    const r = checkProof(build([[0, "P → Q", "P"], [0, "P → ¬R", "P"], [0, "¬P", "notI", "1, 2"]]));
+    expect(r.lines[2].error).toMatch(/¬I needs/);
+  });
+
+  it("⊥E concludes the negated assumption, not anything", () => {
+    const ok = checkProof(build([[0, "¬Q", "P"], [1, "Q", "A"], [1, "⊥", "botI", "2, 1"], [0, "¬Q", "botE", "2-3"]]));
+    expect(ok.valid).toBe(true);
+    const r = checkProof(build([[0, "P", "P"], [0, "¬P", "P"], [0, "⊥", "botI", "1, 2"], [0, "R", "botE", "3"]]));
+    expect(r.lines[3].error).toMatch(/cites one subproof/);
+  });
+
+  it("∀I on a name that appears in a premise", () => {
+    const r = checkProof(build([[0, "P(c)", "P"], [0, "∀x P(x)", "allI", "1"]]));
+    expect(r.lines[1].error).toMatch(/can't be generalized/);
+  });
+
+  it("∀I on a name in an open assumption", () => {
+    const r = checkProof(build([[1, "P(c)", "A"], [1, "∀x P(x)", "allI", "1"]]));
+    expect(r.lines[1].error).toMatch(/can't be generalized/);
+  });
+
+  it("∀I must replace every occurrence", () => {
+    const r = checkProof(build([[0, "∀x R(x, x)", "P"], [0, "R(c, c)", "allE", "1"], [0, "∀x R(x, c)", "allI", "2"]]));
+    expect(r.valid).toBe(false);
+  });
+
+  it("∃E with a conclusion that still mentions the variable", () => {
+    const r = checkProof(build([[0, "∃x P(x)", "P"], [0, "∀x (P(x) → Q(x))", "P"], [0, "Q(x)", "exE", "1, 2"]]));
+    expect(r.valid).toBe(false);
   });
 
   it("→I with the wrong antecedent", () => {

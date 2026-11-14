@@ -542,7 +542,7 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
           spellCheck={false}
           autoComplete="off"
           aria-label={`Line ${index + 1} formula`}
-          placeholder={line.kind === "assumption" ? "Assume…  ([c] for a boxed constant)" : "Formula"}
+          placeholder={line.kind === "assumption" ? "Assume…" : "Formula"}
           className="absolute inset-y-0 right-0 bg-transparent pr-2 font-logic text-[15px] outline-none placeholder:font-sans placeholder:text-sm placeholder:text-muted/60"
           style={{ left: textLeft, width: `calc(100% - ${textLeft}px)` }}
         />

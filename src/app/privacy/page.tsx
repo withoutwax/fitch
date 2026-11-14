@@ -33,6 +33,10 @@ export default function PrivacyPage() {
             <strong>Progress saved before signing in:</strong> when you sign in, anything saved in your browser is moved into your account and then
             removed from the browser.
           </li>
+          <li>
+            <strong>Bug reports:</strong> if you use &ldquo;Report a bug&rdquo; on a problem, we keep what you wrote, the proof that was in the
+            editor, and your email address. Reports sent without signing in carry no account details.
+          </li>
         </ul>
         <p>We don&apos;t collect payment information, precise location, or contacts, and we don&apos;t run advertising or third-party tracking.</p>
       </Section>

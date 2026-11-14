@@ -47,7 +47,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P"],
     goal: "¬¬P",
     description: "Prove the double negation of a formula you already have. There is no rule that does this in one step.",
-    hint: "Assume ¬P in a subproof, derive ⊥ with ⊥I, and close it with ¬I.",
+    hint: "Assume ¬P, derive ⊥ with ⊥I, and close the subproof with ⊥E to get ¬¬P.",
   },
   {
     id: "modus-tollens",
@@ -58,7 +58,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P → Q", "¬Q"],
     goal: "¬P",
     description: "If P implies Q and Q is false, then P must be false too.",
-    hint: "Assume P, get Q by →E, contradict ¬Q, and finish with ¬I.",
+    hint: "Assume P, get Q by →E, and derive ⊥ against ¬Q. ⊥E closes the subproof with ¬P.",
   },
   {
     id: "disjunction-swap",
@@ -69,7 +69,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P ∨ Q"],
     goal: "Q ∨ P",
     description: "Disjunction is commutative. Unlike conjunction, you can't simply take a disjunction apart, so you need proof by cases.",
-    hint: "Use ∨E with two subproofs: one assuming P, one assuming Q. Each ends with Q ∨ P.",
+    hint: "Prove P → Q ∨ P and Q → Q ∨ P with →I, using ∨I inside each. Then ∨E with the premise.",
   },
   {
     id: "transitivity-of-identity",
@@ -102,7 +102,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P → Q"],
     goal: "¬Q → ¬P",
     description: "A conditional implies its contrapositive.",
-    hint: "Assume ¬Q. Inside that, assume P and derive ⊥. Then use ¬I and →I.",
+    hint: "Assume ¬Q. Inside that, assume P, derive ⊥ and close with ⊥E to get ¬P. Then →I.",
   },
   {
     id: "exportation",
@@ -124,7 +124,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P ∨ Q", "¬P"],
     goal: "Q",
     description: "One of P or Q holds and it isn't P, so it must be Q.",
-    hint: "Use ∨E. In the P case, derive ⊥ and then Q with ⊥E. The Q case is a one-line subproof.",
+    hint: "Show P → Q: assume P, then assume ¬Q, derive ⊥ and close with ⊥E to get ¬¬Q, then ¬E. Q → Q is a one-line subproof. Finish with ∨E.",
   },
   {
     id: "distribution",
@@ -146,7 +146,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬(P ∨ Q)"],
     goal: "¬P ∧ ¬Q",
     description: "If neither P nor Q is true, then P is false and Q is false.",
-    hint: "Prove ¬P by assuming P and deriving P ∨ Q, which contradicts the premise. Do the same for ¬Q.",
+    hint: "Prove ¬P by assuming P, deriving P ∨ Q to contradict the premise, and closing with ⊥E. Do the same for ¬Q.",
   },
   {
     id: "transitivity-of-biconditional",
@@ -157,7 +157,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P ↔ Q", "Q ↔ R"],
     goal: "P ↔ R",
     description: "Biconditionals chain just like identities do.",
-    hint: "↔I needs two subproofs: P … R and R … P. Use ↔E inside each.",
+    hint: "↔E gives you all four conditionals. Prove P → R and R → P with →I, then ↔I.",
   },
   {
     id: "universal-modus-ponens",
@@ -168,7 +168,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x (P(x) → Q(x))", "∀x P(x)"],
     goal: "∀x Q(x)",
     description: "If every P is a Q and everything is a P, then everything is a Q.",
-    hint: "Open a subproof with a boxed constant [c]. Instantiate both premises with ∀E, apply →E, then close with ∀I.",
+    hint: "Instantiate both premises at a new name c with ∀E and apply →E to get Q(c). c is in no premise, so ∀I gives ∀x Q(x).",
   },
   {
     id: "existential-transfer",
@@ -179,7 +179,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x (P(x) → Q(x))", "∃x P(x)"],
     goal: "∃x Q(x)",
     description: "If every P is a Q and something is a P, then something is a Q.",
-    hint: "Use ∃E with a subproof that starts [c] P(c). Inside, derive Q(c) and then ∃x Q(x).",
+    hint: "Assume P(c), derive Q(c) and ∃x Q(x), and close with →I. ∀I turns P(c) → ∃x Q(x) into a universal, and ∃E with the premise gives ∃x Q(x).",
   },
   {
     id: "excluded-middle",
@@ -190,7 +190,7 @@ export const PROBLEMS: Problem[] = [
     premises: [],
     goal: "P ∨ ¬P",
     description: "A theorem with no premises. Every proposition is either true or false. Proving it with only intro and elim rules is a classic puzzle.",
-    hint: "Assume ¬(P ∨ ¬P) and derive ⊥. Along the way you'll need to show ¬P. Finish with ¬I and ¬E.",
+    hint: "Assume ¬(P ∨ ¬P) and derive ⊥. Along the way you'll need ¬P. ⊥E gives ¬¬(P ∨ ¬P), and ¬E finishes.",
   },
   {
     id: "de-morgan-and",
@@ -201,7 +201,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬(P ∧ Q)"],
     goal: "¬P ∨ ¬Q",
     description: "The harder De Morgan law. A direct proof doesn't work, because you don't know which conjunct fails.",
-    hint: "Indirect proof: assume ¬(¬P ∨ ¬Q). From it, derive P and Q separately, contradict the premise, then use ¬I and ¬E.",
+    hint: "Indirect proof: assume ¬(¬P ∨ ¬Q). From it derive P and Q separately, contradict the premise, then use ⊥E and ¬E.",
   },
   {
     id: "quantifier-negation",
@@ -212,7 +212,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬∃x P(x)"],
     goal: "∀x ¬P(x)",
     description: "If nothing is a P, then everything is not a P.",
-    hint: "Open [c]. Inside, assume P(c), derive ∃x P(x) to contradict the premise, conclude ¬P(c), then use ∀I.",
+    hint: "Assume P(c), derive ∃x P(x) to contradict the premise, and close with ⊥E to get ¬P(c). c is new, so ∀I gives ∀x ¬P(x).",
   },
   {
     id: "quantifier-swap",
@@ -223,7 +223,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x ∀y L(x, y)"],
     goal: "∀y ∃x L(x, y)",
     description: "If someone loves everyone, then everyone is loved by someone. (The converse doesn't hold!)",
-    hint: "Open [d] for ∀I. Inside it, open [c] ∀y L(c, y) for ∃E, derive L(c, d) and then ∃x L(x, d).",
+    hint: "Assume ∀y L(c, y), get L(c, d) and ∃x L(x, d), and close with →I. ∀I and ∃E give ∃x L(x, d). d is new, so finish with ∀I.",
   },
   {
     id: "conjunction-association",
@@ -245,7 +245,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P ↔ Q", "Q"],
     goal: "P",
     description: "A biconditional works in both directions. Given the right-hand side, recover the left.",
-    hint: "One application of ↔E, citing both premises.",
+    hint: "↔E turns the premise into Q → P. Then →E with Q.",
   },
   {
     id: "explosion",
@@ -256,7 +256,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P", "¬P"],
     goal: "Q",
     description: "From a contradiction, anything follows (ex falso quodlibet).",
-    hint: "Derive ⊥ with ⊥I, then use ⊥E.",
+    hint: "Derive ⊥ with ⊥I. Then assume ¬Q, reiterate ⊥, and close with ⊥E to get ¬¬Q. ¬E gives Q.",
   },
   {
     id: "double-negation-elim",
@@ -377,7 +377,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P → R", "Q → R"],
     goal: "(P ∨ Q) → R",
     description: "If R follows from P and also from Q, it follows from P ∨ Q.",
-    hint: "Assume P ∨ Q, then nest a ∨E inside it with one subproof per disjunct.",
+    hint: "Assume P ∨ Q, then use ∨E with the premises P → R and Q → R. Close with →I.",
   },
   {
     id: "negated-conditional",
@@ -388,7 +388,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P ∧ ¬Q"],
     goal: "¬(P → Q)",
     description: "A conditional is false when its antecedent is true and its consequent false.",
-    hint: "Assume P → Q, derive Q, contradict ¬Q, and use ¬I.",
+    hint: "Assume P → Q, derive Q, contradict ¬Q, and close with ⊥E.",
   },
   {
     id: "biconditional-swap",
@@ -399,7 +399,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P ↔ Q"],
     goal: "Q ↔ P",
     description: "The biconditional is symmetric.",
-    hint: "↔I needs two subproofs: Q … P and P … Q. Each is a single ↔E.",
+    hint: "↔E gives P → Q and Q → P. ↔I puts them back together the other way round.",
   },
   {
     id: "absorption",
@@ -421,7 +421,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x (P(x) ∧ Q(x))"],
     goal: "∀x P(x) ∧ ∀x Q(x)",
     description: "If everything is both P and Q, then everything is P and everything is Q.",
-    hint: "Two separate ∀I subproofs, one for ∀x P(x) and one for ∀x Q(x), then ∧I.",
+    hint: "∀E at a new name c gives P(c) ∧ Q(c). ∧E both parts, use ∀I on each, then ∧I.",
   },
   {
     id: "existential-weakening",
@@ -432,7 +432,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x P(x)"],
     goal: "∃x (P(x) ∨ Q(x))",
     description: "If something is a P, then something is either a P or a Q.",
-    hint: "∃E with a subproof [a] P(a). Inside, use ∨I and then ∃I.",
+    hint: "Assume P(a), use ∨I and ∃I, and close with →I. ∀I gives ∀x (P(x) → ∃x (P(x) ∨ Q(x))), and ∃E with the premise finishes.",
   },
   {
     id: "universal-to-existential",
@@ -454,7 +454,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x (P(x) → Q(x))", "∀x (Q(x) → R(x))"],
     goal: "∀x (P(x) → R(x))",
     description: "All Ps are Qs and all Qs are Rs, so all Ps are Rs (the syllogism Barbara).",
-    hint: "Open [a], assume P(a), chain the two instantiated conditionals, then use →I and ∀I.",
+    hint: "Assume P(a), chain the two instantiated conditionals, and close with →I. a is new, so ∀I finishes.",
   },
   {
     id: "distinctness",
@@ -465,7 +465,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P(a)", "¬P(b)"],
     goal: "a ≠ b",
     description: "Objects with different properties can't be identical.",
-    hint: "Assume a = b, transfer P(a) to P(b) with =E, and contradict ¬P(b).",
+    hint: "Assume a = b, transfer P(a) to P(b) with =E, and contradict ¬P(b). ⊥E closes with ¬(a = b).",
   },
   {
     id: "existential-split",
@@ -476,7 +476,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x (P(x) ∧ Q(x))"],
     goal: "∃x P(x) ∧ ∃x Q(x)",
     description: "If something is both P and Q, then something is P and something is Q. (The converse fails!)",
-    hint: "∃E with [a] P(a) ∧ Q(a). Inside, build both existentials and conjoin them.",
+    hint: "Assume P(a) ∧ Q(a), build both existentials and conjoin them, and close with →I. Then ∀I and ∃E with the premise.",
   },
   {
     id: "symmetric-relation",
@@ -498,7 +498,7 @@ export const PROBLEMS: Problem[] = [
     premises: [],
     goal: "((P → Q) → P) → P",
     description: "A famous theorem that only involves →, yet needs negation (or classical reasoning) to prove.",
-    hint: "Assume (P → Q) → P, then assume ¬P. Show P → Q (using ⊥E), get P, contradict ¬P, and finish with ¬I and ¬E.",
+    hint: "Assume (P → Q) → P, then assume ¬P. Show P → Q (inside it, get Q from ⊥ with ⊥E and ¬E), get P, contradict ¬P, and finish with ⊥E and ¬E.",
   },
   {
     id: "converse-contraposition",
@@ -509,7 +509,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬Q → ¬P"],
     goal: "P → Q",
     description: "Going back from a contrapositive to the original conditional takes indirect proof.",
-    hint: "Assume P, then assume ¬Q. Derive ¬P for a contradiction, so ¬¬Q, so Q.",
+    hint: "Assume P, then assume ¬Q. Derive ¬P for a contradiction, so ⊥E gives ¬¬Q and ¬E gives Q.",
   },
   {
     id: "material-implication",
@@ -520,7 +520,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P → Q"],
     goal: "¬P ∨ Q",
     description: "Every conditional can be rewritten as a disjunction.",
-    hint: "Indirect proof: assume ¬(¬P ∨ Q). Show ¬P (assume P and derive ⊥), then ¬P ∨ Q contradicts the assumption.",
+    hint: "Indirect proof: assume ¬(¬P ∨ Q). Show ¬P (assume P and derive ⊥), then ¬P ∨ Q contradicts the assumption. Finish with ⊥E and ¬E.",
   },
   {
     id: "negated-universal",
@@ -531,7 +531,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬∀x P(x)"],
     goal: "∃x ¬P(x)",
     description: "If not everything is a P, then something isn't. Harder than its sibling #19.",
-    hint: "Assume ¬∃x ¬P(x). Prove ∀x P(x) with a [a] subproof (P(a) comes from an indirect proof), contradict the premise, then ¬I and ¬E.",
+    hint: "Assume ¬∃x ¬P(x). Prove P(a) by an indirect proof and generalize with ∀I, contradict the premise, then ⊥E and ¬E.",
   },
   {
     id: "existential-antecedent",
@@ -542,7 +542,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x P(x) → Q"],
     goal: "∀x (P(x) → Q)",
     description: "If the existence of a P guarantees Q, then being a P guarantees Q for every object.",
-    hint: "Open [a]. Assume P(a), derive ∃x P(x) and then Q. Use →I, then ∀I.",
+    hint: "Assume P(a), derive ∃x P(x) and then Q, and close with →I. a is new, so ∀I finishes.",
   },
   {
     id: "uniqueness",
@@ -553,7 +553,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x (P(x) ∧ ∀y (P(y) → y = x))", "P(a)", "P(b)"],
     goal: "a = b",
     description: "Exactly one thing is a P. So if a and b are both Ps, they're the same object.",
-    hint: "∃E with [c] P(c) ∧ ∀y (P(y) → y = c). Show a = c and b = c, then combine them with =E.",
+    hint: "Assume P(c) ∧ ∀y (P(y) → y = c). Show a = c and b = c, combine them with =E, and close with →I. Then ∀I and ∃E with the first premise.",
   },
   {
     id: "implication-distribution",
@@ -597,7 +597,7 @@ export const PROBLEMS: Problem[] = [
     premises: [],
     goal: "(¬P → Q) → ((¬P → ¬Q) → P)",
     description: "If ¬P leads to both Q and ¬Q, then ¬P can't be true. This is proof by contradiction written as a theorem.",
-    hint: "After assuming both conditionals, assume ¬P and reach ⊥. ¬I then gives ¬¬P, and ¬E gives P.",
+    hint: "After assuming both conditionals, assume ¬P and get Q and ¬Q by →E. Close with →I twice to get ¬P → Q and ¬P → ¬Q, so ¬I gives ¬¬P and ¬E gives P.",
   },
   {
     id: "universal-over-disjunction",
@@ -608,7 +608,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x P(x) ∨ ∀x Q(x)"],
     goal: "∀x (P(x) ∨ Q(x))",
     description: "If everything is a P or everything is a Q, then each thing is a P or a Q. The converse doesn't hold.",
-    hint: "∨E on the premise. In each case, open a boxed subproof [c], instantiate with ∀E, weaken with ∨I and finish with ∀I.",
+    hint: "Show ∀x P(x) → ∀x (P(x) ∨ Q(x)) and the same for Q with →I: instantiate at c, weaken with ∨I, use ∀I. Then ∨E.",
   },
   {
     id: "universal-swap",
@@ -619,7 +619,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x ∀y R(x, y)"],
     goal: "∀y ∀x R(x, y)",
     description: "The order of two universal quantifiers doesn't matter.",
-    hint: "Open a boxed subproof [b] for y, and inside it another [a] for x. Use ∀E twice to get R(a, b), then ∀I twice.",
+    hint: "∀E twice gives R(a, b). Neither name is in the premise, so ∀I twice: first a, then b.",
   },
   {
     id: "existential-over-disjunction",
@@ -630,7 +630,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x (P(x) ∨ Q(x))"],
     goal: "∃x P(x) ∨ ∃x Q(x)",
     description: "An existential distributes over a disjunction, which takes both ∃E and ∨E.",
-    hint: "∃E with [c] P(c) ∨ Q(c). Inside it, use ∨E, and in each case apply ∃I and then ∨I.",
+    hint: "Assume P(c) ∨ Q(c) and get ∃x P(x) ∨ ∃x Q(x) by ∨E, with ∃I and ∨I in each case. Close with →I, then ∀I and ∃E.",
   },
   {
     id: "existential-swap",
@@ -641,7 +641,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x ∃y R(x, y)"],
     goal: "∃y ∃x R(x, y)",
     description: "The order of two existential quantifiers doesn't matter either, but the proof looks quite different from problem 56.",
-    hint: "∃E with [a] ∃y R(a, y), then again with [b] R(a, b). Apply ∃I twice inside, then close both subproofs with ∃E.",
+    hint: "Assume ∃y R(a, y). Inside, assume R(a, b), use ∃I twice, then →I, ∀I and ∃E. Close the outer one the same way.",
   },
   {
     id: "conjunction-idempotence",
@@ -663,7 +663,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P ∨ P"],
     goal: "P",
     description: "If either P or P holds, then P holds.",
-    hint: "∨E with two one-line subproofs, each just assuming P.",
+    hint: "P → P is a one-line subproof closed with →I. ∨E with it twice.",
   },
   {
     id: "packaged-modus-ponens",
@@ -696,7 +696,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬P ∧ ¬Q"],
     goal: "¬(P ∨ Q)",
     description: "The other direction of De Morgan's law for disjunction.",
-    hint: "Assume P ∨ Q and derive ⊥ by ∨E: each case contradicts one conjunct of the premise. Then ¬I.",
+    hint: "Assume P ∨ Q. Prove P → ⊥ and Q → ⊥, each case contradicting one conjunct of the premise, and get ⊥ by ∨E. Then ⊥E.",
   },
   {
     id: "de-morgan-and-converse",
@@ -707,7 +707,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬P ∨ ¬Q"],
     goal: "¬(P ∧ Q)",
     description: "The easy direction of De Morgan's law for conjunction.",
-    hint: "Assume P ∧ Q. Inside it, use ∨E on the premise and get ⊥ in both cases. Then ¬I.",
+    hint: "Assume P ∧ Q. Prove ¬P → ⊥ and ¬Q → ⊥, get ⊥ by ∨E on the premise, and close with ⊥E.",
   },
   {
     id: "distribution-converse",
@@ -718,7 +718,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["(P ∧ Q) ∨ (P ∧ R)"],
     goal: "P ∧ (Q ∨ R)",
     description: "Factor a common conjunct back out of a disjunction.",
-    hint: "∨E on the premise. In each case, ∧E gives P and one of Q, R; ∨I and ∧I rebuild the goal.",
+    hint: "Prove each case as a conditional with →I: ∧E gives P and one of Q, R, and ∨I and ∧I rebuild the goal. Then ∨E.",
   },
   {
     id: "disjunction-association",
@@ -729,7 +729,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["(P ∨ Q) ∨ R"],
     goal: "P ∨ (Q ∨ R)",
     description: "Disjunction is associative. Expect a ∨E inside a ∨E.",
-    hint: "∨E on the premise. The P ∨ Q case needs its own ∨E; every case ends with one or two ∨I steps.",
+    hint: "∨E on the premise, with each case proved as a conditional by →I. The P ∨ Q case needs its own ∨E. Every case ends with one or two ∨I steps.",
   },
   {
     id: "disjunction-to-conditional",
@@ -740,7 +740,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬P ∨ Q"],
     goal: "P → Q",
     description: "One direction of the material conditional: ¬P ∨ Q is enough for P → Q.",
-    hint: "Assume P. ∨E on the premise: the ¬P case gives ⊥ and then Q by ⊥E; the Q case is immediate.",
+    hint: "Assume P. Prove ¬P → Q (from ⊥, use ⊥E and ¬E) and Q → Q, then ∨E with the premise.",
   },
   {
     id: "distribution-or-over-and",
@@ -751,7 +751,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["(P ∨ Q) ∧ (P ∨ R)"],
     goal: "P ∨ (Q ∧ R)",
     description: "Disjunction distributes over conjunction. Factoring P back out takes nested case analysis.",
-    hint: "∨E on P ∨ Q. The P case is easy. In the Q case, do ∨E on P ∨ R.",
+    hint: "∨E on P ∨ Q, proving each case as a conditional with →I. The P case is easy. In the Q case, do ∨E on P ∨ R.",
   },
   {
     id: "negated-conditional-elim",
@@ -762,7 +762,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬(P → Q)"],
     goal: "P ∧ ¬Q",
     description: "If a conditional is false, its antecedent is true and its consequent false. This is the converse of problem 35.",
-    hint: "For P: assume ¬P, derive P → Q (by ⊥E inside), contradict the premise, then ¬I and ¬E. For ¬Q: assume Q and derive P → Q again.",
+    hint: "For P: assume ¬P, derive P → Q (getting Q from ⊥ with ⊥E and ¬E), contradict the premise, then ⊥E and ¬E. For ¬Q: assume Q, derive P → Q again, and close with ⊥E.",
   },
   {
     id: "conditional-totality",
@@ -773,7 +773,7 @@ export const PROBLEMS: Problem[] = [
     premises: [],
     goal: "(P → Q) ∨ (Q → P)",
     description: "A surprising classical theorem: of any two propositions, one implies the other.",
-    hint: "Assume the negation of the goal. Show ¬Q (assuming Q gives P → Q). Then Q → P follows by ⊥E, which contradicts the assumption.",
+    hint: "Assume the negation of the goal. Show ¬Q (assuming Q gives P → Q). Then Q → P follows, using ⊥E and ¬E inside it, which contradicts the assumption.",
   },
   {
     id: "biconditional-negation",
@@ -784,7 +784,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P ↔ Q"],
     goal: "¬P ↔ ¬Q",
     description: "Equivalent propositions have equivalent negations.",
-    hint: "↔I with two subproofs. In each, assume one negation and prove the other by ¬I, using ↔E.",
+    hint: "↔E gives P → Q and Q → P. Prove ¬P → ¬Q and ¬Q → ¬P, each with an inner ⊥E, then ↔I.",
   },
   {
     id: "consequentia-mirabilis",
@@ -795,7 +795,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬P → P"],
     goal: "P",
     description: "If P follows even from its own negation, P must be true.",
-    hint: "Assume ¬P, get P by →E, derive ⊥. Then ¬I gives ¬¬P and ¬E gives P.",
+    hint: "Assume ¬P, get P by →E, derive ⊥. ⊥E gives ¬¬P and ¬E gives P.",
   },
   {
     id: "two-instances",
@@ -839,7 +839,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x P(x) ∧ ∀x Q(x)"],
     goal: "∀x (P(x) ∧ Q(x))",
     description: "The converse of problem 38: ∀ distributes over ∧ in both directions.",
-    hint: "∧E both universals, then open [c], instantiate both and ∧I. Close with ∀I.",
+    hint: "∧E both universals, instantiate both at a new name c, and ∧I. Then ∀I.",
   },
   {
     id: "universal-negation-to-negated-existential",
@@ -850,7 +850,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x ¬P(x)"],
     goal: "¬∃x P(x)",
     description: "The converse of problem 19: if everything lacks P, nothing has it.",
-    hint: "Assume ∃x P(x). ∃E with [c] P(c), get ¬P(c) by ∀E, derive ⊥. Then ¬I.",
+    hint: "Assume ∃x P(x). Inside, prove ∀x (P(x) → ⊥) with →I and ∀I, and ∃E gives ⊥. Then ⊥E.",
   },
   {
     id: "existential-negation-to-negated-universal",
@@ -861,7 +861,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x ¬P(x)"],
     goal: "¬∀x P(x)",
     description: "The converse of problem 48: a counterexample refutes a universal.",
-    hint: "Assume ∀x P(x). ∃E with [c] ¬P(c), then ∀E gives P(c) and ⊥.",
+    hint: "Assume ∀x P(x). Inside, prove ∀x (¬P(x) → ⊥) with →I and ∀I, and ∃E with the premise gives ⊥. Then ⊥E.",
   },
   {
     id: "existential-disjunction-merge",
@@ -872,7 +872,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x P(x) ∨ ∃x Q(x)"],
     goal: "∃x (P(x) ∨ Q(x))",
     description: "The converse of problem 57.",
-    hint: "∨E on the premise. In each case, ∃E with [c], then ∨I and ∃I.",
+    hint: "Prove each disjunct implies the goal with →I. In each, use ∃E: assume P(c), apply ∨I and ∃I, then →I and ∀I. Finish with ∨E.",
   },
   {
     id: "universal-conditional-distribution",
@@ -883,7 +883,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x (P(x) → Q(x))"],
     goal: "∀x P(x) → ∀x Q(x)",
     description: "∀ distributes over → in this direction.",
-    hint: "Assume ∀x P(x). Open [c], instantiate both, →E, close with ∀I. Then →I.",
+    hint: "Assume ∀x P(x). Instantiate both at c, apply →E, and use ∀I. Then →I.",
   },
   {
     id: "existential-constant-consequent",
@@ -894,7 +894,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x (P(x) → Q)", "∃x P(x)"],
     goal: "Q",
     description: "When Q doesn't mention x, any witness for P is enough to get Q.",
-    hint: "∃E with [c] P(c). Inside, ∀E and →E give Q, which doesn't mention c.",
+    hint: "The first premise is already of the form ∀x (P(x) → Q), so ∃E with ∃x P(x) gives Q in one step.",
   },
   {
     id: "universal-diagonal",
@@ -905,7 +905,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x ∀y R(x, y)"],
     goal: "∀x R(x, x)",
     description: "Instantiate both quantifiers with the same constant.",
-    hint: "Open [c], ∀E twice with c, then ∀I.",
+    hint: "∀E twice with the same new name c, then ∀I.",
   },
   {
     id: "existential-diagonal",
@@ -916,7 +916,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x ∀y R(x, y)"],
     goal: "∃x R(x, x)",
     description: "If something is related to everything, it is related to itself.",
-    hint: "∃E with [c] ∀y R(c, y). ∀E with c, then ∃I.",
+    hint: "Assume ∀y R(c, y), ∀E with c, ∃I, and close with →I. Then ∀I and ∃E.",
   },
   {
     id: "universal-antecedent-to-existential",
@@ -927,7 +927,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x (P(x) → Q)"],
     goal: "∃x P(x) → Q",
     description: "The converse of problem 49: an existential antecedent equals a universal over the conditional.",
-    hint: "Assume ∃x P(x). Inside it, ∃E with [c] P(c); ∀E and →E give Q. Close with →I.",
+    hint: "Assume ∃x P(x). ∃E with it and the premise gives Q. Close with →I.",
   },
   {
     id: "universal-disjunction-extraction",
@@ -938,7 +938,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x (Q ∨ P(x))"],
     goal: "Q ∨ ∀x P(x)",
     description: "A disjunct that doesn't mention x can be pulled out of a universal. This one needs classical reasoning.",
-    hint: "Assume ¬(Q ∨ ∀x P(x)). First show ¬Q. Then in [c], ∨E on Q ∨ P(c) gives P(c), so ∀x P(x). Contradiction, then ¬I and ¬E.",
+    hint: "Assume ¬(Q ∨ ∀x P(x)). First show ¬Q. Then ∀E gives Q ∨ P(c), and ∨E gives P(c), so ∀I gives ∀x P(x). Contradiction, then ⊥E and ¬E.",
   },
   {
     id: "negated-existential-negation",
@@ -949,7 +949,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["¬∃x ¬P(x)"],
     goal: "∀x P(x)",
     description: "If there is no counterexample, the universal holds.",
-    hint: "Open [c]. Assume ¬P(c), use ∃I to contradict the premise, then ¬I and ¬E give P(c). Close with ∀I.",
+    hint: "Assume ¬P(c), use ∃I to contradict the premise, then ⊥E and ¬E give P(c). c is new, so ∀I.",
   },
   {
     id: "asymmetry-irreflexivity",
@@ -960,7 +960,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x ∀y (R(x, y) → ¬R(y, x))"],
     goal: "∀x ¬R(x, x)",
     description: "An asymmetric relation can't relate anything to itself.",
-    hint: "Open [c] and instantiate both quantifiers with c. Assume R(c, c) and use →E to get ¬R(c, c).",
+    hint: "Instantiate both quantifiers with a new name c. Assume R(c, c), use →E to get ¬R(c, c), and close with ⊥E. Then ∀I.",
   },
   {
     id: "relational-chain",
@@ -970,8 +970,8 @@ export const PROBLEMS: Problem[] = [
     category: "Quantifiers",
     premises: ["∀x (P(x) → ∃y R(x, y))", "∀x ∀y (R(x, y) → Q(y))", "∃x P(x)"],
     goal: "∃y Q(y)",
-    description: "Chain three quantified premises together. This takes two nested ∃E subproofs.",
-    hint: "∃E with [a] P(a) to get ∃y R(a, y). ∃E again with [b] R(a, b), then ∀E twice and →E give Q(b). Then ∃I.",
+    description: "Chain three quantified premises together. This takes two ∃E steps, one inside the other.",
+    hint: "Work backwards from ∃E: assume P(a) to get ∃y R(a, y). Inside, assume R(a, b), ∀E twice and →E give Q(b), then ∃I. Close each assumption with →I, generalize with ∀I and use ∃E.",
   },
   {
     id: "reflexivity-of-identity",
@@ -1037,7 +1037,7 @@ export const PROBLEMS: Problem[] = [
     premises: [],
     goal: "∀x (x = x)",
     description: "Everything is self-identical, stated as a universal.",
-    hint: "Open [c], use =I to get c = c, then ∀I.",
+    hint: "=I gives c = c for a new name c. Then ∀I.",
   },
   {
     id: "self-witness",
@@ -1070,7 +1070,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["P(a)"],
     goal: "∀x (x = a → P(x))",
     description: "The converse of problem 96.",
-    hint: "Open a subproof [c] c = a. Use =E on P(a) to get P(c), then ∀I.",
+    hint: "Assume c = a. Use =E on P(a) to get P(c), close with →I, then ∀I.",
   },
   {
     id: "universal-symmetry-of-identity",
@@ -1081,7 +1081,7 @@ export const PROBLEMS: Problem[] = [
     premises: [],
     goal: "∀x ∀y (x = y → y = x)",
     description: "Symmetry of identity as a theorem with no premises.",
-    hint: "Open [a], then [b] a = b. =I gives a = a, and =E rewrites the first a to get b = a. Close with ∀I twice.",
+    hint: "Assume a = b. =I gives a = a, and =E rewrites the first a to get b = a. Close with →I, then ∀I twice.",
   },
   {
     id: "existential-identity-witness",
@@ -1092,7 +1092,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∃x (x = a ∧ P(x))"],
     goal: "P(a)",
     description: "The converse of problem 95: if something identical to a has P, then a has P.",
-    hint: "∃E with [c] c = a ∧ P(c). ∧E both parts, then =E gives P(a), which doesn't mention c.",
+    hint: "Assume c = a ∧ P(c). ∧E both parts and =E gives P(a). Close with →I, then ∀I and ∃E.",
   },
   {
     id: "one-object-world",
@@ -1103,7 +1103,7 @@ export const PROBLEMS: Problem[] = [
     premises: ["∀x ∀y (x = y)", "P(a)"],
     goal: "∀x P(x)",
     description: "If there is only one object, whatever holds of a holds of everything.",
-    hint: "Open [c]. ∀E twice gives a = c, and =E on P(a) gives P(c). Close with ∀I.",
+    hint: "∀E twice gives a = c, and =E on P(a) gives P(c). c is new, so ∀I.",
   },
 ];
 

@@ -1,4 +1,4 @@
-import { equal, flatten, freeNames, instanceTerm, parseFormula, ParseError, replacesSome, show, type Formula } from "./formula";
+import { equal, flatten, freeNames, instanceTerm, parseFormula, replacesSome, show, type Formula } from "./formula";
 import { RULE_BY_ID, type RuleId } from "./rules";
 
 export type LineKind = "premise" | "assumption" | "step";
@@ -16,8 +16,6 @@ export interface LineResult {
   ok: boolean;
   error?: string;
   formula?: Formula;
-  /** Boxed constant introduced by an assumption line, e.g. "[c]". */
-  boxed?: string;
 }
 
 export interface CheckResult {
@@ -34,23 +32,20 @@ interface Subproof {
 }
 
 interface CitedSubproof {
-  assumption: Formula | null;
-  boxed: string | null;
+  assumption: Formula;
   last: Formula;
+}
+
+/** What a rule may need to know about where its cited lines sit. */
+interface RuleContext {
+  /** Premises and still-open assumptions in force at each cited line, in citation order. */
+  actives: Formula[][];
 }
 
 class RuleError extends Error {}
 
 function fail(msg: string): never {
   throw new RuleError(msg);
-}
-
-/** Parse an assumption line, which may open with a boxed constant: "[c]" or "[c] P(c)". */
-export function parseAssumption(text: string): { boxed?: string; formula?: Formula } {
-  const m = /^\s*\[\s*([^\]]*?)\s*\]\s*(.*)$/.exec(text);
-  if (!m) return { formula: parseFormula(text) };
-  if (!/^[a-z][A-Za-z0-9_']*$/.test(m[1])) throw new ParseError("A boxed constant must be a lowercase name, like [c]");
-  return { boxed: m[1], formula: m[2].trim() ? parseFormula(m[2]) : undefined };
 }
 
 type Ref = { from: number; to: number };
@@ -104,18 +99,17 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
 
   const lineAccessible = (j: number, i: number) => j < i && ctx[j].every((s) => ctx[i].includes(s));
   const subAt = (start: number) => subs.findIndex((s) => s.start === start);
+  // The premises, and the assumptions of the subproofs still open at line j.
+  const activeAt = (j: number) =>
+    [...lines.flatMap((l, k) => (l.kind === "premise" ? [k] : [])), ...ctx[j].map((s) => subs[s].start)]
+      .map((k) => results[k]?.formula)
+      .filter((f): f is Formula => !!f);
 
   // ---- parse every line ----
   for (let i = 0; i < n; i++) {
     const line = lines[i];
     try {
-      if (line.kind === "assumption") {
-        const { boxed, formula } = parseAssumption(line.text);
-        if (!boxed && !formula) fail("Empty assumption");
-        results[i] = { ...results[i], boxed, formula };
-      } else {
-        results[i] = { ...results[i], formula: parseFormula(line.text) };
-      }
+      results[i] = { ...results[i], formula: parseFormula(line.text) };
     } catch (e) {
       err(i, e instanceof Error ? e.message : String(e));
     }
@@ -127,23 +121,12 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
     const res = results[i];
     if (!res.ok) continue;
     try {
-      if (line.kind === "premise") continue;
-      if (line.kind === "assumption") {
-        if (res.boxed) {
-          const c = res.boxed;
-          for (let j = 0; j < i; j++) {
-            if (!lineAccessible(j, i)) continue;
-            const r = results[j];
-            if (r.boxed === c || (r.formula && freeNames(r.formula).has(c)))
-              fail(`The boxed constant ${c} must be new, but it already appears on line ${j + 1}`);
-          }
-        }
-        continue;
-      }
+      if (line.kind === "premise" || line.kind === "assumption") continue;
       if (!line.rule) fail("Choose a rule to justify this line");
       const cites = parseRefs(line.refs);
       const cLines: Formula[] = [];
       const cSubs: CitedSubproof[] = [];
+      const actives: Formula[][] = [];
       for (const { from, to } of cites) {
         if (from < 0 || to >= n) fail(`There is no line ${(from < 0 ? from : to) + 1}`);
         if (to >= i) fail(`Line ${i + 1} can only cite earlier lines`);
@@ -152,8 +135,8 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
         if (from === to && lineAccessible(from, i)) {
           const r = results[from];
           if (!r.ok) fail(`Line ${from + 1} has an error, fix it first`);
-          if (!r.formula) fail(`Line ${from + 1} only introduces a boxed constant`);
           cLines.push(r.formula!);
+          actives.push(activeAt(from));
           continue;
         }
         if (from === to && lines[from].kind !== "assumption") fail(`Line ${from + 1} is inside a subproof that has already ended`);
@@ -167,9 +150,9 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
         for (let k = from; k <= to; k++) if (!results[k].ok) fail(`Line ${k + 1} inside the cited subproof has an error`);
         const last = results[to].formula;
         if (!last) fail(`The subproof ${from + 1}–${to + 1} has no conclusion`);
-        cSubs.push({ assumption: results[from].formula ?? null, boxed: results[from].boxed ?? null, last: last! });
+        cSubs.push({ assumption: results[from].formula!, last: last! });
       }
-      applyRule(line.rule as RuleId, res.formula!, cLines, cSubs);
+      applyRule(line.rule as RuleId, res.formula!, cLines, cSubs, { actives });
     } catch (e) {
       if (e instanceof RuleError) err(i, e.message);
       else throw e;
@@ -203,13 +186,10 @@ function expectCites(rule: RuleId, lines: Formula[], subs: CitedSubproof[], nLin
   }
 }
 
-function requireOrdinary(s: CitedSubproof, label: string): Formula {
-  if (s.boxed || !s.assumption) fail(`${label} needs an ordinary subproof, not one with a boxed constant`);
-  return s.assumption!;
-}
-
-function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[]): void {
-  const label = RULE_BY_ID[rule].label;
+// The rules follow Stanford's Fitch (logic.stanford.edu/logica/homepage/fitch.php).
+// Only Implication Introduction and False Elimination discharge a subproof;
+// every other rule works on lines.
+function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], ctx: RuleContext): void {
   switch (rule) {
     case "reit":
       expectCites(rule, L, S, 1, 0);
@@ -243,25 +223,23 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[]): 
     }
 
     case "orE": {
-      expectCites(rule, L, S, 1, S.length);
-      const g = L[0];
-      if (g.t !== "or") fail("∨E must cite a disjunction");
-      if (S.length < 2) fail("∨E needs one subproof for each disjunct");
-      const assumed = S.map((s) => requireOrdinary(s, label));
-      const options = [[g.a, g.b], flatten(g, "or")];
-      const fits = options.some(
-        (ds) => ds.length === S.length && ds.every((d) => assumed.some((a) => equal(a, d))) && assumed.every((a) => ds.some((d) => equal(a, d))),
-      );
-      if (!fits) fail("Each subproof must assume one disjunct of the cited line, one subproof per disjunct");
-      S.forEach((s) => {
-        if (!equal(s.last, f)) fail(`Each subproof must end with ${show(f)}`);
+      expectCites(rule, L, S, 3, 0);
+      // φ ∨ ψ, φ → χ, ψ → χ ⊢ χ
+      const ok = [0, 1, 2].some((d) => {
+        const g = L[d];
+        if (g.t !== "or") return false;
+        const [x, y] = L.filter((_, k) => k !== d);
+        const conds = (p: Formula, q: Formula) =>
+          p.t === "imp" && q.t === "imp" && equal(p.a, g.a) && equal(q.a, g.b) && equal(p.b, f) && equal(q.b, f);
+        return conds(x, y) || conds(y, x);
       });
+      if (!ok) fail(`∨E needs P ∨ Q, P → ${show(f)} and Q → ${show(f)}`);
       return;
     }
 
     case "impI": {
       expectCites(rule, L, S, 0, 1);
-      const a = requireOrdinary(S[0], label);
+      const a = S[0].assumption;
       if (f.t !== "imp") fail("→I must produce a conditional");
       const g = f;
       if (!equal(a, g.a)) fail(`The subproof must assume the antecedent ${show(g.a)}`);
@@ -280,33 +258,33 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[]): 
     }
 
     case "iffI": {
-      expectCites(rule, L, S, 0, 2);
+      expectCites(rule, L, S, 2, 0);
+      // φ → ψ, ψ → φ ⊢ φ ↔ ψ
       if (f.t !== "iff") fail("↔I must produce a biconditional");
       const g = f;
-      const [s1, s2] = S.map((s) => ({ a: requireOrdinary(s, label), z: s.last }));
-      const dir = (s: { a: Formula; z: Formula }, x: Formula, y: Formula) => equal(s.a, x) && equal(s.z, y);
-      if (!((dir(s1, g.a, g.b) && dir(s2, g.b, g.a)) || (dir(s1, g.b, g.a) && dir(s2, g.a, g.b))))
-        fail(`↔I needs one subproof ${show(g.a)} … ${show(g.b)} and one ${show(g.b)} … ${show(g.a)}`);
+      const conv = (p: Formula, q: Formula) => p.t === "imp" && q.t === "imp" && equal(p.a, g.a) && equal(p.b, g.b) && equal(q.a, g.b) && equal(q.b, g.a);
+      if (!conv(L[0], L[1]) && !conv(L[1], L[0])) fail(`↔I needs ${show(g.a)} → ${show(g.b)} and ${show(g.b)} → ${show(g.a)}`);
       return;
     }
 
     case "iffE": {
-      expectCites(rule, L, S, 2, 0);
-      const ok = [0, 1].some((k) => {
-        const c = L[k];
-        const o = L[1 - k];
-        return c.t === "iff" && ((equal(c.a, o) && equal(c.b, f)) || (equal(c.b, o) && equal(c.a, f)));
-      });
-      if (!ok) fail("↔E needs P ↔ Q and one side, and produces the other side");
+      expectCites(rule, L, S, 1, 0);
+      // φ ↔ ψ ⊢ φ → ψ, and φ ↔ ψ ⊢ ψ → φ
+      const g = L[0];
+      if (g.t !== "iff") fail("↔E must cite a biconditional");
+      const fwd: Formula = { t: "imp", a: g.a, b: g.b };
+      const back: Formula = { t: "imp", a: g.b, b: g.a };
+      if (!equal(f, fwd) && !equal(f, back)) fail(`↔E turns ${show(g)} into ${show(fwd)} or ${show(back)}`);
       return;
     }
 
     case "notI": {
-      expectCites(rule, L, S, 0, 1);
-      const a = requireOrdinary(S[0], label);
+      expectCites(rule, L, S, 2, 0);
+      // φ → ψ, φ → ¬ψ ⊢ ¬φ
       if (f.t !== "not") fail("¬I must produce a negation");
-      if (S[0].last.t !== "bot") fail("The subproof must end with ⊥");
-      if (!equal(a, f.a)) fail(`The subproof must assume ${show(f.a)}`);
+      const phi = f.a;
+      const pair = (p: Formula, q: Formula) => p.t === "imp" && q.t === "imp" && equal(p.a, phi) && equal(q.a, phi) && q.b.t === "not" && equal(q.b.a, p.b);
+      if (!pair(L[0], L[1]) && !pair(L[1], L[0])) fail(`¬I needs ${show(phi)} → Q and ${show(phi)} → ¬Q`);
       return;
     }
 
@@ -328,10 +306,13 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[]): 
       return;
     }
 
-    case "botE":
-      expectCites(rule, L, S, 1, 0);
-      if (L[0].t !== "bot") fail("⊥E must cite ⊥");
+    case "botE": {
+      expectCites(rule, L, S, 0, 1);
+      // A subproof assuming φ and ending in ⊥ gives ¬φ.
+      if (S[0].last.t !== "bot") fail("The subproof must end with ⊥");
+      if (!(f.t === "not" && equal(f.a, S[0].assumption))) fail(`⊥E concludes ${show({ t: "not", a: S[0].assumption })}, the negation of the assumption`);
       return;
+    }
 
     case "eqI":
       expectCites(rule, L, S, 0, 0);
@@ -359,17 +340,17 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[]): 
     }
 
     case "allI": {
-      expectCites(rule, L, S, 0, 1);
-      const s = S[0];
-      if (!s.boxed) fail("∀I needs a subproof that begins with a boxed constant, like [c]");
+      expectCites(rule, L, S, 1, 0);
+      // φ ⊢ ∀x φ[c ↦ x], replacing every c, where c is in no premise or open assumption.
       if (f.t !== "all") fail("∀I must produce a universal ∀x …");
       const g = f;
-      const c = s.boxed!;
-      const target: Formula = s.assumption ? { t: "imp", a: s.assumption, b: s.last } : s.last;
-      const term = instanceTerm(g.body, g.v, target);
-      if (term === false || (term !== null && term !== c))
-        fail(`Replacing ${g.v} with ${c} in ${show(g.body)} must give ${show(target)}`);
-      if (freeNames(f).has(c)) fail(`The boxed constant ${c} can't appear in the conclusion`);
+      const c = instanceTerm(g.body, g.v, L[0]);
+      if (c === false) fail(`${show(L[0])} is not ${show(g.body)} with a name in place of ${g.v}`);
+      if (c !== null) {
+        if (freeNames(f).has(c)) fail(`∀I must replace every ${c} with ${g.v}`);
+        const used = ctx.actives[0].find((a) => freeNames(a).has(c));
+        if (used) fail(`${c} appears in the premise or assumption ${show(used)}, so it can't be generalized`);
+      }
       return;
     }
 
@@ -382,17 +363,16 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[]): 
     }
 
     case "exE": {
-      expectCites(rule, L, S, 1, 1);
-      const g = L[0];
-      if (g.t !== "ex") fail("∃E must cite an existential ∃x …");
-      const gg = g;
-      const s = S[0];
-      if (!s.boxed || !s.assumption) fail("∃E needs a subproof that begins with a boxed constant and an instance, like [c] P(c)");
-      const term = instanceTerm(gg.body, gg.v, s.assumption!);
-      if (term === false || (term !== null && term !== s.boxed))
-        fail(`The subproof must assume ${show(gg.body)} with ${gg.v} replaced by ${s.boxed}`);
-      if (!equal(s.last, f)) fail(`The subproof must end with ${show(f)}`);
-      if (freeNames(f).has(s.boxed!)) fail(`The boxed constant ${s.boxed} can't appear in the conclusion`);
+      expectCites(rule, L, S, 2, 0);
+      // ∃x φ, ∀x (φ → ψ) ⊢ ψ, where x is not free in ψ
+      const ok = [0, 1].some((k) => {
+        const e = L[k];
+        const u = L[1 - k];
+        if (e.t !== "ex" || u.t !== "all" || u.body.t !== "imp") return false;
+        const same = equal({ t: "ex", v: e.v, body: e.body }, { t: "ex", v: u.v, body: u.body.a });
+        return same && !freeNames(u.body.b).has(u.v) && equal(u.body.b, f);
+      });
+      if (!ok) fail("∃E needs ∃x P(x) and ∀x (P(x) → Q), where Q doesn't mention x, and produces Q");
       return;
     }
   }

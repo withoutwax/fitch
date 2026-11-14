@@ -225,9 +225,7 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
                 Cite lines like <Kbd>1, 3</Kbd> and subproofs like <Kbd>2-5</Kbd>.
               </li>
               <li>Or tick the lines a rule uses and click its button below the proof to have the line added for you.</li>
-              <li>
-                For Universal Introduction and Existential Elimination, start the subproof with a boxed constant: <Kbd>[c]</Kbd> or <Kbd>[c] P(c)</Kbd>.
-              </li>
+              <li>Only Implication Introduction and False Elimination close a subproof. Every other rule cites lines.</li>
             </ul>
             <Link href="/rules" target="_blank" className="mt-2 inline-block font-medium text-accent hover:underline">
               Full rule reference ↗

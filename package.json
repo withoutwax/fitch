@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "emulators": "firebase emulators:start --project demo-fitch"
+    "emulators": "firebase emulators:start --project demo-fitch",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-fitch \"vitest run --config vitest.rules.config.ts\""
   },
   "dependencies": {
     "firebase": "^13.1.0",
@@ -17,12 +18,14 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "firebase-admin": "^14.5.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.7"

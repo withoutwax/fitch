@@ -1,9 +1,72 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Each student can only read and write their own profile, progress and submissions.
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    // Roles live in users/{uid}.role: "admin", "teacher" or "student".
+    // A missing role means student. Tests: rules-tests/firestore.rules.test.ts
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function roleOf(uid) {
+      let path = /databases/$(database)/documents/users/$(uid);
+      return exists(path) ? get(path).data.get('role', 'student') : 'student';
+    }
+
+    function isAdmin() {
+      return signedIn() && roleOf(request.auth.uid) == 'admin';
+    }
+
+    function isTeacherOrAdmin() {
+      return signedIn() && roleOf(request.auth.uid) in ['admin', 'teacher'];
+    }
+
+    // The site owner's account becomes the first admin by setting its own role.
+    function isBootstrapAdmin() {
+      return request.auth.token.email == 'rlagmlckd@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      allow create: if signedIn() && request.auth.uid == uid
+        && (!('role' in request.resource.data)
+            || (request.resource.data.role == 'admin' && isBootstrapAdmin()));
+
+      // Owners edit their own profile but never their role (except the bootstrap
+      // admin promoting itself). Admins change other users' roles and nothing else.
+      allow update: if signedIn() && (
+        (request.auth.uid == uid
+          && (!changedKeys().hasAny(['role'])
+              || (request.resource.data.role == 'admin' && isBootstrapAdmin())))
+        || (request.auth.uid != uid && isAdmin()
+          && changedKeys().hasOnly(['role'])
+          && request.resource.data.role in ['admin', 'teacher', 'student'])
+      );
+
+      allow delete: if signedIn() && request.auth.uid == uid;
+
+      // Progress and submissions: only the owner.
+      match /{collection}/{rest=**} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // Problems are public. They are written only by scripts/upload-problems.ts (Admin SDK).
+    match /problems/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Model answers are for teachers and admins only.
+    match /solutions/{id} {
+      allow read: if isTeacherOrAdmin();
+      allow write: if false;
     }
   }
 }

@@ -1,5 +1,5 @@
 import { checkProof, parseRefs, type ProofLine } from "./checker";
-import { equal, freeNames, parseFormula, prettify, show, type Formula } from "./formula";
+import { equal, freeNames, parseFormula, prettify, show, type Binary, type Formula } from "./formula";
 import { RULE_BY_ID, type RuleId } from "./rules";
 
 // The button-driven way of building a proof: tick lines, click a rule, and the
@@ -279,7 +279,7 @@ function attemptAction(action: Action, { lines, checked, level, input }: Attempt
       const [p, q] = [formulaAt(x), formulaAt(y)];
       const pair = (a: Formula, b: Formula) => a.t === "imp" && b.t === "imp" && equal(a.a, b.a) && b.b.t === "not" && equal(b.b.a, a.b);
       if (!pair(p, q) && !pair(q, p)) fail("Those lines aren't two conditionals P → Q and P → ¬Q with the same P.");
-      return finish([step({ t: "not", a: (p as Extract<Formula, { t: "imp" }>).a }, refOf([x, y]))]);
+      return finish([step({ t: "not", a: (p as Binary).a }, refOf([x, y]))]);
     }
 
     case "notE": {

@@ -27,7 +27,7 @@ function replay(rows: Row[]): ProofLine[] {
         if (rule === "eqI") input = (parseFormula(text) as { l: string }).l;
         else if (rule === "allI") {
           // The name the cited line has where the universal has its variable.
-          const g = parseFormula(text) as Extract<Formula, { t: "all" }>;
+          const g = parseFormula(text) as Extract<Formula, { t: "all" | "ex" }>;
           input = (instanceTerm(g.body, g.v, parseLine(lines.find((l) => l.id === checked[0])!)) || "zz") as string;
         } else {
           const g = parseLine(lines.find((l) => l.id === checked[0])!) as Extract<Formula, { t: "all" | "ex" }>;

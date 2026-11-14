@@ -81,7 +81,8 @@ export function ConsentGate() {
             <Link href="/privacy#activity" target="_blank" className="text-accent hover:underline">
               live activity
             </Link>{" "}
-            (the problem I have open, how long, proof length, idle or offline, recent submissions).
+            (the problem I have open, how long, proof length, idle or offline) and my progress: the problems I have attempted and solved, and every
+            proof I submit.
           </Item>
         </div>
 

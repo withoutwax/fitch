@@ -3,13 +3,14 @@
 // parent's consent for children under 14.
 
 /** Bump when the Terms or Privacy Policy change in a way users must re-accept. */
-export const CONSENT_VERSION = "2026-11-14";
+// firestore.rules (sharesHistory) treats "2026-11-14" as not covering progress history.
+export const CONSENT_VERSION = "2026-11-14.2";
 
 export interface Consent {
   version: string;
   terms: boolean;
   privacy: boolean;
-  /** Required: live activity visible to teachers (presence/{uid}). */
+  /** Required: live activity (presence/{uid}), progress and submitted proofs visible to teachers. */
   activity: boolean;
   /** 14 or older, or a parent or guardian agreed. */
   age: boolean;

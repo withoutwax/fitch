@@ -67,7 +67,7 @@ export function ActivityView() {
   const recent = useMemo(
     () =>
       sorted
-        .flatMap((p) => p.events.map((e) => ({ ...e, who: p.name || p.email || "Student" })))
+        .flatMap((p) => p.events.map((e) => ({ ...e, uid: p.uid, who: p.name || p.email || "Student" })))
         .sort((a, b) => b.at - a.at)
         .slice(0, 15),
     [sorted],
@@ -90,7 +90,7 @@ export function ActivityView() {
     <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
-        <p className="mt-1 text-sm text-muted">What signed-in students are doing right now. Updates live.</p>
+        <p className="mt-1 text-sm text-muted">What signed-in students are doing right now. Updates live. Select a student to see their profile and every attempt.</p>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -129,13 +129,13 @@ export function ActivityView() {
                   return (
                     <tr key={p.uid} className={`${i % 2 ? "bg-surface-2/40" : ""} ${status === "offline" ? "opacity-60" : ""}`}>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
+                        <Link href={`/activity/student?id=${encodeURIComponent(p.uid)}`} className="group flex items-center gap-3" title="View this student's profile and attempts">
                           <Avatar name={p.name || p.email || "?"} />
                           <div className="min-w-0">
-                            <div className="truncate font-medium">{p.name || "—"}</div>
+                            <div className="truncate font-medium group-hover:text-accent group-hover:underline">{p.name || "—"}</div>
                             <div className="truncate text-xs text-muted">{p.email}</div>
                           </div>
-                        </div>
+                        </Link>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`inline-flex items-center gap-1.5 ${st.text}`}>
@@ -186,7 +186,9 @@ export function ActivityView() {
             {recent.map((e, i) => (
               <li key={`${e.who}-${e.at}-${i}`} className="px-4 py-2.5">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate font-medium">{e.who}</span>
+                  <Link href={`/activity/student?id=${encodeURIComponent(e.uid)}`} className="truncate font-medium hover:text-accent hover:underline">
+                    {e.who}
+                  </Link>
                   <span className="shrink-0 text-xs text-muted">{timeAgo(new Date(e.at))}</span>
                 </div>
                 <div className="text-xs">

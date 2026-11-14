@@ -124,6 +124,50 @@ describe("profiles and roles", () => {
   });
 });
 
+describe("student history for teachers and admins", () => {
+  const share = (uid: string, version: string) =>
+    env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, `users/${uid}`), { consent: { version, terms: true, privacy: true, age: true, activity: true } }, { merge: true });
+      await setDoc(doc(db, `users/${uid}/submissions/s1`), { problemId: "p1", solved: true });
+    });
+
+  it("teachers and admins read a sharing student's profile, progress and submissions", async () => {
+    await share("alice", "2026-11-14.2");
+    for (const who of ["tina", "adam"]) {
+      const db = as(who);
+      await assertSucceeds(getDoc(doc(db, "users/alice")));
+      await assertSucceeds(getDocs(collection(db, "users/alice/progress")));
+      await assertSucceeds(getDocs(collection(db, "users/alice/submissions")));
+    }
+  });
+
+  it("consent to live activity alone (the first version) does not share history", async () => {
+    await share("alice", "2026-11-14");
+    await assertFails(getDoc(doc(as("tina"), "users/alice")));
+    await assertFails(getDocs(collection(as("tina"), "users/alice/progress")));
+    await assertFails(getDocs(collection(as("adam"), "users/alice/submissions")));
+  });
+
+  it("a student without consent is not readable by teachers", async () => {
+    await assertFails(getDoc(doc(as("tina"), "users/alice")));
+    await assertFails(getDocs(collection(as("tina"), "users/alice/submissions")));
+  });
+
+  it("other students still cannot read a sharing student's history", async () => {
+    await share("alice", "2026-11-14.2");
+    await assertFails(getDoc(doc(as("bob"), "users/alice")));
+    await assertFails(getDocs(collection(as("bob"), "users/alice/submissions")));
+  });
+
+  it("teachers and admins cannot write a student's history", async () => {
+    await share("alice", "2026-11-14.2");
+    await assertFails(setDoc(doc(as("tina"), "users/alice/submissions/s2"), { problemId: "p1", solved: true }));
+    await assertFails(deleteDoc(doc(as("adam"), "users/alice/submissions/s1")));
+    await assertFails(setDoc(doc(as("tina"), "users/alice/progress/p1"), { solved: false }));
+  });
+});
+
 describe("problems", () => {
   it("anyone can read problems, guests included", async () => {
     await assertSucceeds(getDoc(doc(guest(), "problems/p1")));

@@ -37,12 +37,18 @@ export default function PrivacyPage() {
         <p>We don&apos;t collect payment information, precise location, or contacts, and we don&apos;t run advertising or third-party tracking.</p>
       </Section>
 
-      <Section id="activity" title="Live activity seen by teachers">
+      <Section id="activity" title="Activity and progress seen by teachers">
         <p>
           Agreeing to this is required to use an account; you can still solve problems as a guest without it. While you are signed in as a student your browser tells us what you are doing on the site right now so teachers and admins can help: which
           page and problem you have open and since when, how many lines your proof has, whether you are idle (no input for 2 minutes or the tab is in
           the background), when you were last online, and your last few submissions and whether they were accepted. It is updated about every 30
           seconds while the site is open. We keep only your latest status, not a history. Guests who aren&apos;t signed in are not tracked.
+        </p>
+        <p>
+          Teachers and admins can also open your student profile, which shows your name and email address, the problems you have attempted and
+          solved, whether you solved a problem after viewing the model answer, and every submission you have made with its date, result and the
+          proof as you submitted it. Submissions made before you agreed to this version of the policy are included once you agree. Progress you
+          made as a guest is included only after you sign in and it moves into your account.
         </p>
       </Section>
 
@@ -59,7 +65,7 @@ export default function PrivacyPage() {
         <p>
           Accounts and progress are stored with Google Firebase (Firebase Authentication and Cloud Firestore), which processes the data on our behalf
           under Google&apos;s terms. Data may be stored on servers outside your country. Security rules ensure each account can only read and write
-          its own progress, and only teachers and admins can read live activity.
+          its own progress, and only teachers and admins can read other students&apos; live activity, progress and submissions.
         </p>
       </Section>
 

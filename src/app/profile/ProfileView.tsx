@@ -210,7 +210,7 @@ export function ProfileView({ problems: PROBLEMS }: { problems: Problem[] }) {
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+export function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-line bg-surface p-5">
       <h2 className="mb-4 text-sm font-semibold">{title}</h2>
@@ -258,7 +258,7 @@ function Ring({ value, total }: { value: number; total: number }) {
   );
 }
 
-function Calendar({ subs }: { subs: Submission[] }) {
+export function Calendar({ subs }: { subs: Submission[] }) {
   const counts = new Map<string, { all: number; solved: number }>();
   for (const s of subs) {
     if (!s.at) continue;

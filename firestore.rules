@@ -51,8 +51,18 @@ service cloud.firestore {
       return exists(path) && get(path).data.get('consent', {}).get('activity', false) == true;
     }
 
+    // Teachers and admins may read a student's profile, progress and submitted
+    // proofs once the student has agreed to it. Consent version 2026-11-14 covered
+    // live activity only, so it does not count.
+    function sharesHistory(uid) {
+      let path = /databases/$(database)/documents/users/$(uid);
+      let consent = exists(path) ? get(path).data.get('consent', {}) : {};
+      return consent.get('activity', false) == true && consent.get('version', '2026-11-14') != '2026-11-14';
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow get: if isTeacherOrAdmin() && sharesHistory(uid);
 
       allow create: if signedIn() && request.auth.uid == uid && consentOk()
         && (!('role' in request.resource.data)
@@ -71,9 +81,11 @@ service cloud.firestore {
 
       allow delete: if signedIn() && request.auth.uid == uid;
 
-      // Progress and submissions: only the owner.
+      // Progress and submissions: written only by the owner; teachers and admins
+      // read them for students who share their history.
       match /{collection}/{rest=**} {
         allow read, write: if signedIn() && request.auth.uid == uid;
+        allow read: if isTeacherOrAdmin() && sharesHistory(uid);
       }
     }
 

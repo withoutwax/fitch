@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -16,12 +17,13 @@ import type { User } from "firebase/auth";
 import type { ProofLine } from "./fitch/checker";
 import { firebase } from "./firebase";
 import { clearLocal, hasLocalData, readLocal, recordLocal } from "./localProgress";
-import { BOOTSTRAP_ADMIN_EMAIL } from "./roles";
+import { BOOTSTRAP_ADMIN_EMAIL, parseRole, type Role } from "./roles";
 
 // Signed-in students are stored in Firestore:
 //   users/{uid}                          profile
 //   users/{uid}/progress/{problemId}     one summary per problem
-//   users/{uid}/submissions/{autoId}     every submission, for history and the activity calendar
+//   users/{uid}/submissions/{autoId}     every submission with the proof as submitted, for history and the activity calendar
+// Teachers and admins can read all three for students who agreed to share them (see firestore.rules).
 // Guests (uid null) are stored in this browser instead; see localProgress.ts.
 
 export interface Progress {
@@ -43,6 +45,8 @@ export interface Submission {
   solved: boolean;
   lineCount: number;
   at: Date | null;
+  /** The proof as submitted. Missing on guest submissions and those made before proofs were kept. */
+  proof?: ProofLine[];
 }
 
 const toDate = (v: unknown) => (v instanceof Timestamp ? v.toDate() : null);
@@ -91,6 +95,7 @@ export async function recordSubmission(uid: string | null, problemId: string, so
     problemId,
     solved,
     lineCount: proof.length,
+    proof,
     at: serverTimestamp(),
   });
 }
@@ -142,8 +147,37 @@ export async function loadSubmissions(uid: string | null, max = 200): Promise<Su
   const snap = await getDocs(query(collection(db, "users", uid, "submissions"), orderBy("at", "desc"), limit(max)));
   return snap.docs.map((d) => {
     const v = d.data();
-    return { id: d.id, problemId: v.problemId, solved: Boolean(v.solved), lineCount: v.lineCount ?? 0, at: toDate(v.at) };
+    return {
+      id: d.id,
+      problemId: v.problemId,
+      solved: Boolean(v.solved),
+      lineCount: v.lineCount ?? 0,
+      at: toDate(v.at),
+      proof: Array.isArray(v.proof) ? (v.proof as ProofLine[]) : undefined,
+    };
   });
+}
+
+export interface StudentProfile {
+  uid: string;
+  name: string;
+  email: string;
+  role: Role;
+  lastSeenAt: Date | null;
+}
+
+/** Another user's profile, for teachers and admins. Null if there is no such account. */
+export async function loadStudent(uid: string): Promise<StudentProfile | null> {
+  const snap = await getDoc(doc(firebase().db, "users", uid));
+  const v = snap.data();
+  if (!v) return null;
+  return {
+    uid,
+    name: typeof v.displayName === "string" ? v.displayName : "",
+    email: typeof v.email === "string" ? v.email : "",
+    role: parseRole(v.role),
+    lastSeenAt: toDate(v.lastSeenAt),
+  };
 }
 
 /**

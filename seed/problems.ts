@@ -1,17 +1,8 @@
-export type Difficulty = "Easy" | "Medium" | "Hard";
-export type Category = "Propositional" | "Quantifiers" | "Identity";
+// Seed data for Firestore problems/{id}. The app never imports this file:
+// edit it, run the tests, then run `npm run upload-problems`.
+import type { Problem } from "../src/lib/fitch/problemTypes";
 
-export interface Problem {
-  id: string;
-  number: number;
-  title: string;
-  difficulty: Difficulty;
-  category: Category;
-  premises: string[];
-  goal: string;
-  description: string;
-  hint: string;
-}
+export type { Problem };
 
 export const PROBLEMS: Problem[] = [
   {

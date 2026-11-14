@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "emulators": "firebase emulators:start --project demo-fitch",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-fitch \"vitest run --config vitest.rules.config.ts\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-fitch \"vitest run --config vitest.rules.config.ts\"",
+    "upload-problems": "vite-node scripts/upload-problems.ts --"
   },
   "dependencies": {
     "firebase": "^13.1.0",

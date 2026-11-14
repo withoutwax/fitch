@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Logic } from "@/components/NotationProvider";
-import { PROBLEMS } from "@/lib/fitch/problems";
+import { getProblems } from "@/lib/problemsServer";
 
 // Modus tollens, drawn as a static Fitch proof.
 const SAMPLE: { n: number; depth: number; text: string; why: string; bar?: boolean }[] = [
@@ -12,7 +12,8 @@ const SAMPLE: { n: number; depth: number; text: string; why: string; bar?: boole
   { n: 6, depth: 0, text: "¬P", why: "¬I 3-5" },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const PROBLEMS = await getProblems();
   const count = (d: string) => PROBLEMS.filter((p) => p.difficulty === d).length;
   return (
     <div className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-4 py-16 md:grid-cols-2">

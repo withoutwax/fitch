@@ -15,7 +15,8 @@ import {
 import type { User } from "firebase/auth";
 import type { ProofLine } from "./fitch/checker";
 import { firebase } from "./firebase";
-import { clearLocal, hasLocalData, readLocal, recordLocal, recordLocalAnswerView } from "./localProgress";
+import { clearLocal, hasLocalData, readLocal, recordLocal } from "./localProgress";
+import { BOOTSTRAP_ADMIN_EMAIL } from "./roles";
 
 // Signed-in students are stored in Firestore:
 //   users/{uid}                          profile
@@ -52,7 +53,14 @@ export async function ensureProfile(user: User) {
   const { db } = firebase();
   await setDoc(
     doc(db, "users", user.uid),
-    { displayName: user.displayName ?? null, email: user.email ?? null, lastSeenAt: serverTimestamp() },
+    {
+      displayName: user.displayName ?? null,
+      email: user.email ?? null,
+      lastSeenAt: serverTimestamp(),
+      // The site owner's verified account makes itself the first admin; the
+      // rules allow this for that one email only.
+      ...(user.email === BOOTSTRAP_ADMIN_EMAIL && user.emailVerified ? { role: "admin" } : {}),
+    },
     { merge: true },
   );
 }
@@ -84,21 +92,6 @@ export async function recordSubmission(uid: string | null, problemId: string, so
     solved,
     lineCount: proof.length,
     at: serverTimestamp(),
-  });
-}
-
-/** Note that the student opened the model answer (only the first time is kept). */
-export async function recordAnswerView(uid: string | null, problemId: string) {
-  if (!uid) {
-    recordLocalAnswerView(problemId);
-    return;
-  }
-  const { db } = firebase();
-  const ref = doc(db, "users", uid, "progress", problemId);
-  await runTransaction(db, async (tx) => {
-    const prev = (await tx.get(ref)).data();
-    if (prev?.viewedAnswerAt) return;
-    tx.set(ref, { problemId, viewedAnswerAt: serverTimestamp() }, { merge: true });
   });
 }
 

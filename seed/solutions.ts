@@ -1,8 +1,9 @@
-import type { LineKind, ProofLine } from "./checker";
-import type { RuleId } from "./rules";
+import type { LineKind, ProofLine } from "../src/lib/fitch/checker";
+import type { RuleId } from "../src/lib/fitch/rules";
 
-// Model proofs for every problem. The app loads this module only when a
-// student asks to see an answer, and the tests check each proof is valid.
+// Seed data for Firestore solutions/{id}: model proofs for every problem.
+// The app never imports this file (answers are teacher-only and read from
+// Firestore); the tests check each proof is valid.
 // Compact notation: [depth, text, rule, refs]. Rule "A" marks an
 // assumption and "P" a premise.
 export type Row = [number, string, RuleId | "A" | "P", string?];

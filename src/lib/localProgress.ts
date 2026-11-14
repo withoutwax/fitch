@@ -84,12 +84,3 @@ export function recordLocal(problemId: string, solved: boolean, proof: ProofLine
   writeLocal(store);
 }
 
-export function recordLocalAnswerView(problemId: string) {
-  const store = readLocal();
-  const prev = store.progress[problemId];
-  if (prev?.viewedAnswerAt) return;
-  store.progress[problemId] = prev
-    ? { ...prev, viewedAnswerAt: Date.now() }
-    : { solved: false, attempts: 0, firstSolvedAt: null, lastSolvedAt: null, lastAttemptAt: null, proof: null, viewedAnswerAt: Date.now() };
-  writeLocal(store);
-}

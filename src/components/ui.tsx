@@ -1,4 +1,4 @@
-import type { Difficulty } from "@/lib/fitch/problems";
+import type { Difficulty } from "@/lib/fitch/problemTypes";
 
 const DIFF_CLASS: Record<Difficulty, string> = {
   Easy: "text-easy",

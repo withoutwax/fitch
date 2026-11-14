@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { useNotation } from "@/components/NotationProvider";
 import { ProofEditor } from "@/components/ProofEditor";
@@ -9,8 +10,10 @@ import { CheckIcon, DifficultyText, formatDate, Spinner } from "@/components/ui"
 import { newId } from "@/lib/fitch/apply";
 import { checkProof, type ProofLine } from "@/lib/fitch/checker";
 import { parseFormula, show } from "@/lib/fitch/formula";
-import { PROBLEMS, type Problem } from "@/lib/fitch/problems";
-import { recordAnswerView, recordSubmission } from "@/lib/progress";
+import type { Problem } from "@/lib/fitch/problemTypes";
+import { recordSubmission } from "@/lib/progress";
+import { canSeeSolutions } from "@/lib/roles";
+import { loadSolution } from "@/lib/solutions";
 import { useProgress } from "@/lib/useProgress";
 
 const pretty = (s: string) => show(parseFormula(s));
@@ -44,8 +47,10 @@ function writeDraft(id: string, lines: ProofLine[] | null) {
   }
 }
 
-export function Solver({ problem }: { problem: Problem }) {
-  const { user } = useAuth();
+type Neighbour = Pick<Problem, "id" | "number" | "title"> | null;
+
+export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighbour; next: Neighbour }) {
+  const { user, role } = useAuth();
   const { fmt } = useNotation();
   const { progress, loading, reload } = useProgress();
   const mine = progress[problem.id];
@@ -70,8 +75,8 @@ export function Solver({ problem }: { problem: Problem }) {
 
   const check = useMemo(() => (lines ? checkProof(lines, goal) : null), [lines, goal]);
 
-  const onChange = (next: ProofLine[]) => {
-    setLines(next);
+  const onChange = (updated: ProofLine[]) => {
+    setLines(updated);
     setVerdict(null);
   };
 
@@ -96,36 +101,43 @@ export function Solver({ problem }: { problem: Problem }) {
   };
 
   // ---- model answer ----
-  // Unlocks after one submission. Solutions are fetched only when asked for.
-  const [answerStep, setAnswerStep] = useState<"hidden" | "confirm" | "loading" | "shown">("hidden");
+  // Teachers and admins only; the Firestore rules refuse everyone else.
+  // Opening /problems/{id}?solution=1 shows it straight away.
+  const staff = canSeeSolutions(role);
+  const wantsSolution = useSearchParams().get("solution") === "1";
+  const [answerStep, setAnswerStep] = useState<"hidden" | "loading" | "shown" | "missing">("hidden");
   const [answer, setAnswer] = useState<ProofLine[] | null>(null);
   const answerCheck = useMemo(() => (answer ? checkProof(answer, goal) : null), [answer, goal]);
-  const answerUnlocked = (mine?.attempts ?? 0) > 0 || Boolean(mine?.viewedAnswerAt);
 
   const revealAnswer = async () => {
     setAnswerStep("loading");
     try {
-      const { build, SOLUTIONS } = await import("@/lib/fitch/solutions");
-      setAnswer(build(SOLUTIONS[problem.id]));
-      setAnswerStep("shown");
-      await recordAnswerView(user?.uid ?? null, problem.id);
-      await reload();
+      const lines = await loadSolution(problem.id);
+      setAnswer(lines);
+      setAnswerStep(lines ? "shown" : "missing");
     } catch (e) {
       console.error("Could not load the answer", e);
-      setAnswerStep("hidden");
+      setAnswerStep("missing");
     }
   };
 
-  const askForAnswer = () => (mine?.viewedAnswerAt ? revealAnswer() : setAnswerStep("confirm"));
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!staff || !wantsSolution || autoOpened.current) return;
+    autoOpened.current = true;
+    loadSolution(problem.id).then(
+      (lines) => {
+        setAnswer(lines);
+        setAnswerStep(lines ? "shown" : "missing");
+      },
+      () => setAnswerStep("missing"),
+    );
+  }, [staff, wantsSolution, problem.id]);
 
   const copyAnswer = () => {
     if (!answer) return;
     onChange(answer.map((l) => ({ ...l, id: newId() })));
   };
-
-  const idx = PROBLEMS.findIndex((p) => p.id === problem.id);
-  const prev = PROBLEMS[idx - 1];
-  const next = PROBLEMS[idx + 1];
 
   return (
     <div className="mx-auto grid w-full max-w-7xl flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,8fr)]">
@@ -283,14 +295,12 @@ export function Solver({ problem }: { problem: Problem }) {
                 </Link>
               </span>
             )}
-            {answerStep === "hidden" && (
+            {staff && answerStep === "hidden" && (
               <button
-                onClick={askForAnswer}
-                disabled={!answerUnlocked}
-                title={answerUnlocked ? undefined : "Submit at least once to unlock the answer"}
-                className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-surface-2 hover:text-text disabled:pointer-events-none disabled:opacity-50"
+                onClick={revealAnswer}
+                className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-surface-2 hover:text-text"
               >
-                {answerUnlocked ? "Show answer" : "🔒 Show answer"}
+                See solution
               </button>
             )}
             <button
@@ -302,34 +312,19 @@ export function Solver({ problem }: { problem: Problem }) {
               Submit
             </button>
           </div>
-          {!answerUnlocked && <p className="text-right text-xs text-muted">Submit at least once to unlock the answer.</p>}
         </div>
 
-        {answerStep === "confirm" && (
-          <div className="border-t border-line bg-surface-2/50 p-4 text-sm">
-            <p className="font-medium">Try a bit longer?</p>
-            <p className="mt-1 text-muted">
-              Struggling is where the learning happens. If you look at the answer first, solving this problem will show as &ldquo;solved with
-              answer&rdquo; on your profile.
-            </p>
-            <div className="mt-3 flex justify-end gap-2">
-              <button onClick={() => setAnswerStep("hidden")} className="rounded-lg px-3 py-1.5 font-medium text-muted hover:bg-surface-2 hover:text-text">
-                Keep trying
-              </button>
-              <button onClick={revealAnswer} className="rounded-lg border border-line bg-surface px-3 py-1.5 font-medium hover:bg-surface-2">
-                Show answer
-              </button>
-            </div>
-          </div>
+        {staff && answerStep === "missing" && (
+          <p className="border-t border-line p-4 text-sm text-muted">No model answer has been uploaded for this problem yet.</p>
         )}
 
-        {answerStep === "loading" && (
+        {staff && answerStep === "loading" && (
           <div className="grid place-items-center border-t border-line p-6 text-muted">
             <Spinner />
           </div>
         )}
 
-        {answerStep === "shown" && answer && answerCheck && (
+        {staff && answerStep === "shown" && answer && answerCheck && (
           <div className="border-t border-line">
             <div className="flex items-center justify-between px-4 py-2.5">
               <h3 className="text-sm font-semibold">Model answer</h3>

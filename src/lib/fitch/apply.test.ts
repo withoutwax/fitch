@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { deleteLines, runAction, withoutBlanks, type Action } from "./apply";
 import { checkProof, parseAssumption, type ProofLine } from "./checker";
 import { equal, instanceTerm, parseFormula, type Formula } from "./formula";
-import { PROBLEMS } from "./problems";
-import { build, SOLUTIONS, type Row } from "./solutions";
+import { PROBLEMS } from "../../../seed/problems";
+import { build, SOLUTIONS, type Row } from "../../../seed/solutions";
 
 const parseLine = (l: ProofLine) => (l.kind === "assumption" ? parseAssumption(l.text).formula! : parseFormula(l.text));
 

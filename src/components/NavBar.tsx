@@ -11,7 +11,7 @@ const links = [
 ];
 
 export function NavBar() {
-  const { user, loading } = useAuth();
+  const { user, loading, role } = useAuth();
   const path = usePathname();
 
   return (
@@ -23,7 +23,11 @@ export function NavBar() {
         </Link>
         <div className="flex items-center gap-1 text-sm">
           {/* Signed-in students reach their profile through the avatar. */}
-          {(loading || user ? links : [...links, { href: "/profile", label: "Progress" }]).map((l) => (
+          {[
+            ...links,
+            ...(!loading && !user ? [{ href: "/profile", label: "Progress" }] : []),
+            ...(role === "admin" ? [{ href: "/admin", label: "Admin" }] : []),
+          ].map((l) => (
             <Link
               key={l.href}
               href={l.href}

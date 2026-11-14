@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { checkProof } from "./checker";
 import { equal, parseFormula, show } from "./formula";
-import { PROBLEMS } from "./problems";
-import { build, SOLUTIONS } from "./solutions";
+import { PROBLEMS } from "../../../seed/problems";
+import { build, SOLUTIONS } from "../../../seed/solutions";
 
 describe("parser", () => {
   it("accepts ASCII and Unicode notation", () => {

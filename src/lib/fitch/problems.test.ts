@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { checkProof } from "./checker";
 import { type Formula, parseFormula } from "./formula";
-import { PROBLEMS, type Problem } from "./problems";
-import { build, SOLUTIONS } from "./solutions";
+import { PROBLEMS, type Problem } from "../../../seed/problems";
+import { build, SOLUTIONS } from "../../../seed/solutions";
 
 // Audits every problem: it parses, propositional ones are valid by truth
 // table, the model solution checks, and no two problems are the same sequent

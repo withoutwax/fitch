@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { useNotation } from "@/components/NotationProvider";
 import { CheckIcon, DifficultyText, DotIcon } from "@/components/ui";
 import { parseFormula, show } from "@/lib/fitch/formula";
 import { PROBLEMS, type Category, type Difficulty } from "@/lib/fitch/problems";
@@ -17,6 +18,7 @@ const sequent = (premises: string[], goal: string) =>
 
 export default function ProblemsPage() {
   const { user } = useAuth();
+  const { fmt } = useNotation();
   const { progress } = useProgress();
   const [q, setQ] = useState("");
   const [diff, setDiff] = useState<Difficulty | "all">("all");
@@ -127,7 +129,7 @@ export default function ProblemsPage() {
                       {p.number}. {p.title}
                     </Link>
                   </td>
-                  <td className="hidden px-4 py-3 font-logic text-[13px] text-muted md:table-cell">{sequent(p.premises, p.goal)}</td>
+                  <td className="hidden px-4 py-3 font-logic text-[13px] text-muted md:table-cell">{fmt(sequent(p.premises, p.goal))}</td>
                   <td className="hidden px-4 py-3 text-muted sm:table-cell">{p.category}</td>
                   <td className="px-4 py-3">
                     <DifficultyText d={p.difficulty} />

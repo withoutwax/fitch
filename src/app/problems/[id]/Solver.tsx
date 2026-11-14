@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { useNotation } from "@/components/NotationProvider";
 import { ProofEditor } from "@/components/ProofEditor";
 import { CheckIcon, DifficultyText, formatDate, Spinner } from "@/components/ui";
 import { newId } from "@/lib/fitch/apply";
@@ -45,6 +46,7 @@ function writeDraft(id: string, lines: ProofLine[] | null) {
 
 export function Solver({ problem }: { problem: Problem }) {
   const { user } = useAuth();
+  const { fmt } = useNotation();
   const { progress, loading, reload } = useProgress();
   const mine = progress[problem.id];
   const goal = useMemo(() => parseFormula(problem.goal), [problem.goal]);
@@ -162,7 +164,7 @@ export function Solver({ problem }: { problem: Problem }) {
                 problem.premises.map((p, i) => (
                   <div key={i}>
                     <span className="mr-3 text-xs text-muted">{i + 1}</span>
-                    {pretty(p)}
+                    {fmt(pretty(p))}
                   </div>
                 ))
               ) : (
@@ -170,25 +172,26 @@ export function Solver({ problem }: { problem: Problem }) {
               )}
               <div className="mt-1 border-t border-line pt-1">
                 <span className="mr-2 text-accent">⊢</span>
-                {pretty(problem.goal)}
+                {fmt(pretty(problem.goal))}
               </div>
             </div>
           </div>
 
-          <p className="text-sm leading-relaxed">{problem.description}</p>
+          <p className="text-sm leading-relaxed">{fmt(problem.description)}</p>
 
           <div>
             <button onClick={() => setShowHint(!showHint)} className="text-sm font-medium text-accent hover:underline">
               {showHint ? "Hide hint" : "Show hint"}
             </button>
-            {showHint && <p className="mt-2 rounded-lg bg-accent-soft p-3 text-sm leading-relaxed">{problem.hint}</p>}
+            {showHint && <p className="mt-2 rounded-lg bg-accent-soft p-3 text-sm leading-relaxed">{fmt(problem.hint)}</p>}
           </div>
 
           <div className="rounded-lg border border-line p-4 text-xs leading-relaxed text-muted">
             <div className="mb-1.5 font-medium text-text">How to write a proof</div>
             <ul className="list-disc space-y-1 pl-4">
               <li>
-                Type formulas with the symbol bar or ASCII: <Kbd>~</Kbd> ¬, <Kbd>&amp;</Kbd> ∧, <Kbd>|</Kbd> ∨, <Kbd>-&gt;</Kbd> →, <Kbd>&lt;-&gt;</Kbd> ↔,{" "}
+                Type formulas with the symbol bar or ASCII: <Kbd>~</Kbd> {fmt("¬")}, <Kbd>&amp;</Kbd> {fmt("∧")}, <Kbd>|</Kbd> {fmt("∨")}, <Kbd>=&gt;</Kbd> {fmt("→")},{" "}
+                <Kbd>&lt;=&gt;</Kbd> {fmt("↔")},{" "}
                 <Kbd>#</Kbd> ⊥, <Kbd>Ax</Kbd> ∀x, <Kbd>Ex</Kbd> ∃x.
               </li>
               <li>

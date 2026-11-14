@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { deleteLines, lastDepth, needsSubproof, newId, runAction, withoutBlanks, type Action, type Prompt } from "@/lib/fitch/apply";
 import type { LineResult, ProofLine } from "@/lib/fitch/checker";
 import { prettify } from "@/lib/fitch/formula";
+import { toSymbols, type Notation } from "@/lib/fitch/notation";
 import { RULE_BY_ID, RULES, type RuleId } from "@/lib/fitch/rules";
+import { useNotation } from "./NotationProvider";
 import { CheckIcon } from "./ui";
 
 const INDENT = 18; // px per subproof level
@@ -36,14 +38,23 @@ const RULE_COLUMNS: (RuleId | "assume")[][] = [
 /** Turn ASCII shorthands into logic symbols as the student types. */
 function liveSymbols(s: string) {
   return s
-    .replace(/<->/g, "↔")
-    .replace(/->/g, "→")
+    .replace(/<->|<=>/g, "↔")
+    .replace(/->|=>/g, "→")
     .replace(/\/\\/g, "∧")
     .replace(/\\\//g, "∨")
     .replace(/&/g, "∧")
     .replace(/\|/g, "∨")
     .replace(/~/g, "¬")
     .replace(/#/g, "⊥");
+}
+
+/**
+ * Read an edited formula input: `value` is what the student sees, in their notation.
+ * Returns the formula in standard symbols, plus where the caret belongs once it is shown again.
+ */
+function readFormula(value: string, caret: number, notation: Notation, fmt: (s: string) => string, shortcuts: (s: string) => string = liveSymbols) {
+  const canon = (s: string) => toSymbols(shortcuts(s), notation);
+  return { text: canon(value), caret: fmt(canon(value.slice(0, caret))).length };
 }
 
 interface Props {
@@ -66,6 +77,7 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
   const [pending, setPending] = useState<{ action: Action; prompt: Prompt } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const { notation, fmt } = useNotation();
   const premiseCount = lines.filter((l) => l.kind === "premise").length;
   const hasSubproof = lines.some((l) => l.kind === "assumption");
   const allChecked = lines.length > 0 && lines.every((l) => checked.includes(l.id));
@@ -170,11 +182,13 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
     const i = target;
     if (i < 0 || lines[i].kind === "premise") return;
     const el = inputs.current.get(lines[i].id);
-    const text = lines[i].text;
-    const start = el?.selectionStart ?? text.length;
-    const end = el?.selectionEnd ?? text.length;
-    update(i, { text: text.slice(0, start) + sym + text.slice(end) });
-    setPendingFocus({ id: lines[i].id, caret: start + sym.length });
+    // Caret positions are in the displayed text, so splice the symbol in there and read it back.
+    const shown = fmt(lines[i].text);
+    const start = el?.selectionStart ?? shown.length;
+    const end = el?.selectionEnd ?? shown.length;
+    const { text, caret } = readFormula(shown.slice(0, start) + sym + shown.slice(end), start + sym.length, notation, fmt);
+    update(i, { text });
+    setPendingFocus({ id: lines[i].id, caret });
   };
 
   const onFormulaKey = (e: React.KeyboardEvent<HTMLInputElement>, i: number) => {
@@ -198,11 +212,9 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
 
   const onFormulaInput = (e: React.ChangeEvent<HTMLInputElement>, i: number) => {
     const el = e.target;
-    const caret = el.selectionStart ?? el.value.length;
-    const before = liveSymbols(el.value.slice(0, caret));
-    const text = before + liveSymbols(el.value.slice(caret));
+    const { text, caret } = readFormula(el.value, el.selectionStart ?? el.value.length, notation, fmt);
     update(i, { text });
-    if (text !== el.value) setPendingFocus({ id: lines[i].id, caret: before.length });
+    if (fmt(text) !== el.value) setPendingFocus({ id: lines[i].id, caret });
   };
 
   return (
@@ -215,9 +227,9 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
               title={p.title}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => insertSymbol(p.sym)}
-              className="grid h-8 w-8 place-items-center rounded-md font-logic text-[15px] text-text hover:bg-surface-2"
+              className="grid h-8 min-w-8 place-items-center rounded-md px-1 font-logic text-[15px] text-text hover:bg-surface-2"
             >
-              {p.sym}
+              {fmt(p.sym)}
             </button>
           ))}
           <div className="mx-1 h-5 w-px bg-line" />
@@ -318,7 +330,7 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
 
       {notice && (
         <p role="alert" className="border-t border-line bg-bad-soft px-4 py-2 text-sm text-bad">
-          {notice}
+          {fmt(notice)}
         </p>
       )}
 
@@ -351,18 +363,27 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
 }
 
 function PromptPanel({ prompt, onSubmit, onCancel }: { prompt: Prompt; onSubmit: (value: string) => void; onCancel: () => void }) {
+  // `value` is kept in standard symbols; the input shows it in the student's notation.
   const [value, setValue] = useState(prompt.initial);
   const input = useRef<HTMLInputElement>(null);
+  const { notation, fmt } = useNotation();
+  const shown = prompt.term ? value : fmt(value);
+
+  const edit = (next: string, caret: number) => {
+    if (prompt.term) return setValue(next);
+    const out = readFormula(next, caret, notation, fmt, prettify);
+    setValue(out.text);
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(out.caret, out.caret);
+    });
+  };
 
   const insert = (sym: string) => {
     const el = input.current;
-    const start = el?.selectionStart ?? value.length;
-    const end = el?.selectionEnd ?? value.length;
-    setValue(value.slice(0, start) + sym + value.slice(end));
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(start + sym.length, start + sym.length);
-    });
+    const start = el?.selectionStart ?? shown.length;
+    const end = el?.selectionEnd ?? shown.length;
+    edit(shown.slice(0, start) + sym + shown.slice(end), start + sym.length);
   };
 
   return (
@@ -375,20 +396,20 @@ function PromptPanel({ prompt, onSubmit, onCancel }: { prompt: Prompt; onSubmit:
     >
       <div>
         <div className="text-sm font-semibold">{prompt.title}</div>
-        <p className="text-xs text-muted">{prompt.help}</p>
+        <p className="text-xs text-muted">{fmt(prompt.help)}</p>
       </div>
       <input
         ref={input}
         autoFocus
-        value={value}
-        onChange={(e) => setValue(prompt.term ? e.target.value : prettify(e.target.value))}
+        value={shown}
+        onChange={(e) => edit(e.target.value, e.target.selectionStart ?? e.target.value.length)}
         onKeyDown={(e) => {
           if (e.key === "Escape") onCancel();
         }}
         spellCheck={false}
         autoComplete="off"
         aria-label={prompt.title}
-        placeholder={prompt.placeholder}
+        placeholder={fmt(prompt.placeholder)}
         className="h-9 w-full rounded-md border border-line bg-surface px-2 font-logic text-[15px] outline-none placeholder:text-muted/60 focus:border-accent"
       />
       <div className="flex flex-wrap items-center gap-1">
@@ -400,9 +421,9 @@ function PromptPanel({ prompt, onSubmit, onCancel }: { prompt: Prompt; onSubmit:
               title={p.title}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => insert(p.sym)}
-              className="grid h-8 w-8 place-items-center rounded-md font-logic text-[15px] text-text hover:bg-surface-2"
+              className="grid h-8 min-w-8 place-items-center rounded-md px-1 font-logic text-[15px] text-text hover:bg-surface-2"
             >
-              {p.sym}
+              {fmt(p.sym)}
             </button>
           ))}
         <div className="ml-auto flex gap-1">
@@ -478,6 +499,8 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
   const blank = !line.text.trim() && (!isStep || (!line.rule && !line.refs.trim()));
   const showError = result && !result.ok && !blank;
   const textLeft = BAR_X + line.depth * INDENT + 10;
+  const { fmt } = useNotation();
+  const text = fmt(line.text);
 
   return (
     <div className={`group flex h-10 items-stretch rounded-md ${focused || checked ? "bg-accent-soft/60" : ""}`}>
@@ -501,13 +524,13 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
             className="absolute bottom-1.5 h-px bg-text/70"
             style={{
               left: BAR_X + line.depth * INDENT,
-              width: `min(calc(${Math.max(8, line.text.length + 3)}ch + 12px), calc(100% - ${BAR_X + line.depth * INDENT}px))`,
+              width: `min(calc(${Math.max(8, text.length + 3)}ch + 12px), calc(100% - ${BAR_X + line.depth * INDENT}px))`,
             }}
           />
         )}
         <input
           ref={inputRef}
-          value={line.text}
+          value={text}
           onChange={onText}
           onKeyDown={onKey}
           onFocus={onFocus}
@@ -526,7 +549,7 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
           // The native select lists full rule names; the overlay shows just the short label once chosen.
           <div className="relative h-8 w-full rounded-md border border-transparent hover:border-line has-[select:focus]:border-accent">
             <span className={`pointer-events-none absolute inset-0 flex items-center justify-between px-2 font-logic text-sm ${line.rule ? "text-text" : "text-muted"}`}>
-              {line.rule ? RULE_BY_ID[line.rule].label : <span className="font-sans">Rule…</span>}
+              {line.rule ? fmt(RULE_BY_ID[line.rule].label) : <span className="font-sans">Rule…</span>}
               {!readOnly && <span className="text-[10px] text-muted">▾</span>}
             </span>
           <select
@@ -542,7 +565,7 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
               <optgroup key={g} label={g}>
                 {RULES.filter((r) => r.group === g).map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.label} {r.name}
+                    {fmt(r.label)} {r.name}
                   </option>
                 ))}
               </optgroup>
@@ -574,7 +597,7 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
         )}
       </div>
 
-      <div className="flex w-7 shrink-0 items-center justify-center" title={showError ? result.error : undefined}>
+      <div className="flex w-7 shrink-0 items-center justify-center" title={showError ? fmt(result.error ?? "") : undefined}>
         {blank ? null : showError ? (
           <span className="grid h-5 w-5 place-items-center rounded-full bg-bad-soft text-xs font-bold text-bad">!</span>
         ) : (

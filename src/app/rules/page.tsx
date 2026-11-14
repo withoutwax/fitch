@@ -1,3 +1,4 @@
+import { Logic } from "@/components/NotationProvider";
 import { RULES } from "@/lib/fitch/rules";
 
 export const metadata = { title: "Rules — Fitch" };
@@ -20,10 +21,10 @@ export default function RulesPage() {
             {RULES.filter((r) => r.group === g).map((r) => (
               <div key={r.id} className="rounded-xl border border-line bg-surface p-4">
                 <div className="flex items-baseline gap-3">
-                  <span className="font-logic text-lg font-semibold text-accent">{r.label}</span>
+                  <span className="font-logic text-lg font-semibold text-accent"><Logic>{r.label}</Logic></span>
                   <span className="text-sm font-medium">{r.name}</span>
                 </div>
-                <p className="mt-1.5 font-logic text-[13px] leading-relaxed">{r.description}</p>
+                <p className="mt-1.5 font-logic text-[13px] leading-relaxed"><Logic>{r.description}</Logic></p>
                 <p className="mt-2 text-xs text-muted">Cites {r.cites}</p>
               </div>
             ))}

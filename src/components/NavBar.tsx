@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthProvider";
+import { NotationToggle } from "./NotationProvider";
 
 const links = [
   { href: "/problems", label: "Problems" },
@@ -34,7 +35,10 @@ export function NavBar() {
             </Link>
           ))}
         </div>
-        <div className="ml-auto text-sm">
+        <div className="ml-auto hidden sm:block">
+          <NotationToggle />
+        </div>
+        <div className="text-sm">
           {loading ? null : user ? (
             <Link href="/profile" className="flex items-center gap-2 rounded-full py-1 pr-1 pl-3 hover:bg-surface-2">
               <span className="hidden text-muted sm:inline">{user.displayName || user.email}</span>

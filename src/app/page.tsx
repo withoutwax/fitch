@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logic } from "@/components/NotationProvider";
 import { PROBLEMS } from "@/lib/fitch/problems";
 
 // Modus tollens, drawn as a static Fitch proof.
@@ -61,10 +62,10 @@ export default function Home() {
                 ))}
                 {l.bar && <span className="absolute bottom-1.5 h-px w-20 bg-text/70" style={{ left: 6 + l.depth * 18 }} />}
                 <span className="absolute inset-y-0 flex items-center" style={{ left: 16 + l.depth * 18 }}>
-                  {l.text}
+                  <Logic>{l.text}</Logic>
                 </span>
               </div>
-              <span className="w-24 self-center text-sm text-muted">{l.why}</span>
+              <span className="w-24 self-center text-sm text-muted"><Logic>{l.why}</Logic></span>
             </div>
           ))}
         </div>

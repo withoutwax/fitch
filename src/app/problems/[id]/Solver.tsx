@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { useNotation } from "@/components/NotationProvider";
+import { reportPresence } from "@/components/PresenceTracker";
 import { ProofEditor } from "@/components/ProofEditor";
 import { CheckIcon, DifficultyText, formatDate, Spinner } from "@/components/ui";
 import { newId } from "@/lib/fitch/apply";
@@ -50,7 +51,7 @@ function writeDraft(id: string, lines: ProofLine[] | null) {
 type Neighbour = Pick<Problem, "id" | "number" | "title"> | null;
 
 export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighbour; next: Neighbour }) {
-  const { user, role } = useAuth();
+  const { user, role, consent } = useAuth();
   const { fmt } = useNotation();
   const { progress, loading, reload } = useProgress();
   const mine = progress[problem.id];
@@ -73,6 +74,15 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
     if (lines) writeDraft(problem.id, lines);
   }, [lines, problem.id]);
 
+  // Live activity for teachers (signed-in students only; see PresenceTracker).
+  useEffect(() => {
+    reportPresence.openProblem(problem.id, `${problem.number}. ${problem.title}`);
+    return () => reportPresence.closeProblem(problem.id);
+  }, [problem.id, problem.number, problem.title]);
+  useEffect(() => {
+    if (lines) reportPresence.lines(problem.id, lines.length);
+  }, [lines, problem.id]);
+
   const check = useMemo(() => (lines ? checkProof(lines, goal) : null), [lines, goal]);
 
   const onChange = (updated: ProofLine[]) => {
@@ -91,6 +101,7 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
     try {
       // Guests (no uid) are saved in this browser; signed-in students in Firebase.
       await recordSubmission(user?.uid ?? null, problem.id, check.solved, lines);
+      reportPresence.submitted(problem.id, check.solved);
       setVerdict({ solved: check.solved, message: check.message, lineCount: lines.length });
       await reload();
     } catch (e) {
@@ -287,6 +298,14 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
             )
           )}
           <div className="flex items-center justify-end gap-3">
+            {user && role === "student" && consent?.activity && (
+              <span className="text-xs text-muted">
+                Your teacher can see your activity ·{" "}
+                <Link href="/privacy#activity" className="hover:text-text hover:underline">
+                  Privacy
+                </Link>
+              </span>
+            )}
             {!user && (
               <span className="text-xs text-muted">
                 Saving in this browser ·{" "}

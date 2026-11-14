@@ -113,7 +113,7 @@ function LoginForm() {
       </form>
 
       <p className="mt-4 text-center text-xs leading-relaxed text-muted">
-        By continuing, you agree to the{" "}
+        After signing in, you&apos;ll be asked to agree to the{" "}
         <Link href="/terms" className="underline hover:text-text">
           Terms of Service
         </Link>{" "}

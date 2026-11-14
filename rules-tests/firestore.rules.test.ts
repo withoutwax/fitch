@@ -5,7 +5,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 
 // Runs against the Firestore emulator: npm run test:rules
@@ -153,5 +153,100 @@ describe("solutions", () => {
   it("nobody can write solutions from the client", async () => {
     await assertFails(setDoc(doc(as("adam"), "solutions/p1"), { lines: [] }));
     await assertFails(setDoc(doc(as("tina"), "solutions/p2"), { lines: [] }));
+  });
+});
+
+describe("consent", () => {
+  const consent = (over: Record<string, unknown> = {}) => ({
+    version: "v1",
+    terms: true,
+    privacy: true,
+    age: true,
+    activity: false,
+    at: serverTimestamp(),
+    ...over,
+  });
+
+  it("the owner records their consent", async () => {
+    await assertSucceeds(setDoc(doc(as("alice"), "users/alice"), { consent: consent() }, { merge: true }));
+    await assertSucceeds(setDoc(doc(as("bob"), "users/bob"), { displayName: "Bob", consent: consent({ activity: true }) }));
+  });
+
+  it("consent must be well-formed and use the server time", async () => {
+    await assertFails(setDoc(doc(as("alice"), "users/alice"), { consent: consent({ at: new Date(0) }) }, { merge: true }));
+    await assertFails(setDoc(doc(as("alice"), "users/alice"), { consent: consent({ terms: "yes" }) }, { merge: true }));
+    await assertFails(setDoc(doc(as("alice"), "users/alice"), { consent: consent({ extra: 1 }) }, { merge: true }));
+  });
+
+  it("other profile edits keep working after consent", async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "users/alice"), { consent: { ...consent(), at: new Date(0) } }, { merge: true }),
+    );
+    await assertSucceeds(setDoc(doc(as("alice"), "users/alice"), { displayName: "Al" }, { merge: true }));
+  });
+
+  it("nobody else, not even an admin, records consent for a user", async () => {
+    await assertFails(setDoc(doc(as("adam"), "users/alice"), { consent: consent() }, { merge: true }));
+    await assertFails(setDoc(doc(as("tina"), "users/alice"), { consent: consent() }, { merge: true }));
+  });
+});
+
+describe("presence", () => {
+  beforeEach(() =>
+    env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "users/alice"), { consent: { version: "v1", terms: true, privacy: true, age: true, activity: true } }, { merge: true }),
+    ),
+  );
+
+  const presence = (uid: string, over: Record<string, unknown> = {}) => ({
+    uid,
+    name: "Alice",
+    email: "alice@example.com",
+    path: "/problems/p1",
+    problemId: "p1",
+    problemTitle: "1. One",
+    problemSince: null,
+    lineCount: 3,
+    idle: false,
+    hidden: false,
+    events: [],
+    heartbeatAt: serverTimestamp(),
+    ...over,
+  });
+
+  it("a student writes their own presence", async () => {
+    await assertSucceeds(setDoc(doc(as("alice"), "presence/alice"), presence("alice")));
+    await assertSucceeds(setDoc(doc(as("alice"), "presence/alice"), presence("alice", { idle: true })));
+    await assertSucceeds(deleteDoc(doc(as("alice"), "presence/alice")));
+  });
+
+  it("a student who did not opt in cannot write presence", async () => {
+    await assertFails(setDoc(doc(as("bob"), "presence/bob"), presence("bob")));
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "users/alice"), { consent: { activity: false } }, { merge: true }),
+    );
+    await assertFails(setDoc(doc(as("alice"), "presence/alice"), presence("alice")));
+  });
+
+  it("nobody writes someone else's presence", async () => {
+    await assertFails(setDoc(doc(as("bob"), "presence/alice"), presence("alice")));
+    await assertFails(setDoc(doc(as("bob"), "presence/alice"), presence("bob")));
+    await assertFails(setDoc(doc(as("tina"), "presence/alice"), presence("alice")));
+    await assertFails(setDoc(doc(guest(), "presence/alice"), presence("alice")));
+  });
+
+  it("presence must use the server time and known fields", async () => {
+    await assertFails(setDoc(doc(as("alice"), "presence/alice"), presence("alice", { heartbeatAt: new Date(0) })));
+    await assertFails(setDoc(doc(as("alice"), "presence/alice"), presence("alice", { role: "admin" })));
+    await assertFails(setDoc(doc(as("alice"), "presence/alice"), presence("alice", { events: Array(11).fill({}) })));
+  });
+
+  it("teachers and admins read all presence; students and guests read none", async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "presence/alice"), { uid: "alice" }));
+    await assertSucceeds(getDocs(collection(as("tina"), "presence")));
+    await assertSucceeds(getDoc(doc(as("adam"), "presence/alice")));
+    await assertFails(getDoc(doc(as("alice"), "presence/alice")));
+    await assertFails(getDocs(collection(as("bob"), "presence")));
+    await assertFails(getDocs(collection(guest(), "presence")));
   });
 });

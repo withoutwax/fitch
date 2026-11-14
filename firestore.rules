@@ -31,17 +31,37 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
+    // Sign-up consent (src/components/ConsentGate.tsx). Written only by the owner,
+    // whole, with the server time.
+    function validConsent() {
+      let c = request.resource.data.consent;
+      return c.keys().hasOnly(['version', 'terms', 'privacy', 'age', 'activity', 'at'])
+        && c.version is string && c.terms is bool && c.privacy is bool && c.age is bool && c.activity is bool
+        && c.at == request.time;
+    }
+
+    function consentOk() {
+      return !('consent' in request.resource.data)
+        || (resource != null && 'consent' in resource.data && request.resource.data.consent == resource.data.consent)
+        || validConsent();
+    }
+
+    function sharesActivity(uid) {
+      let path = /databases/$(database)/documents/users/$(uid);
+      return exists(path) && get(path).data.get('consent', {}).get('activity', false) == true;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
 
-      allow create: if signedIn() && request.auth.uid == uid
+      allow create: if signedIn() && request.auth.uid == uid && consentOk()
         && (!('role' in request.resource.data)
             || (request.resource.data.role == 'admin' && isBootstrapAdmin()));
 
       // Owners edit their own profile but never their role (except the bootstrap
       // admin promoting itself). Admins change other users' roles and nothing else.
       allow update: if signedIn() && (
-        (request.auth.uid == uid
+        (request.auth.uid == uid && consentOk()
           && (!changedKeys().hasAny(['role'])
               || (request.resource.data.role == 'admin' && isBootstrapAdmin())))
         || (request.auth.uid != uid && isAdmin()
@@ -61,6 +81,22 @@ service cloud.firestore {
     match /problems/{id} {
       allow read: if true;
       allow write: if false;
+    }
+
+    // Live activity (src/components/PresenceTracker.tsx). Each signed-in student
+    // writes only their own doc, and only after opting in; teachers and admins read everyone's.
+    match /presence/{uid} {
+      allow read: if isTeacherOrAdmin();
+      allow create, update: if signedIn() && request.auth.uid == uid && sharesActivity(uid)
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'path', 'problemId', 'problemTitle',
+             'problemSince', 'lineCount', 'idle', 'hidden', 'events', 'heartbeatAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.heartbeatAt == request.time
+        && request.resource.data.idle is bool
+        && request.resource.data.hidden is bool
+        && request.resource.data.path is string && request.resource.data.path.size() <= 200
+        && request.resource.data.events is list && request.resource.data.events.size() <= 10;
+      allow delete: if signedIn() && request.auth.uid == uid;
     }
 
     // Model answers are for teachers and admins only.

@@ -37,6 +37,16 @@ export default function PrivacyPage() {
         <p>We don&apos;t collect payment information, precise location, or contacts, and we don&apos;t run advertising or third-party tracking.</p>
       </Section>
 
+      <Section id="activity" title="Live activity seen by teachers">
+        <p>
+          This is optional: you choose whether to allow it when you agree to this policy, and saying no doesn&apos;t limit your use of the site. If
+          you allow it, while you are signed in as a student your browser tells us what you are doing on the site right now so teachers and admins can help: which
+          page and problem you have open and since when, how many lines your proof has, whether you are idle (no input for 2 minutes or the tab is in
+          the background), when you were last online, and your last few submissions and whether they were accepted. It is updated about every 30
+          seconds while the site is open. We keep only your latest status, not a history. Guests who aren&apos;t signed in are not tracked.
+        </p>
+      </Section>
+
       <Section title="How we use it">
         <ul>
           <li>To sign you in and keep your account secure.</li>
@@ -50,7 +60,7 @@ export default function PrivacyPage() {
         <p>
           Accounts and progress are stored with Google Firebase (Firebase Authentication and Cloud Firestore), which processes the data on our behalf
           under Google&apos;s terms. Data may be stored on servers outside your country. Security rules ensure each account can only read and write
-          its own progress.
+          its own progress, and only teachers and admins can read live activity.
         </p>
       </Section>
 
@@ -80,8 +90,8 @@ export default function PrivacyPage() {
 
       <Section title="Children and students">
         <p>
-          {SITE.name} is meant for students. If you are under the age required to consent to online services where you live (13 in the United
-          States), use the site only with permission from a parent, guardian or school. If you believe a child has given us personal information
+          {SITE.name} is meant for students. If you are under the age required to consent to online services where you live (14 in Korea, 13 in the United
+          States), you need permission from a parent or guardian to create an account, and you confirm this when you sign up. If you believe a child has given us personal information
           without permission, contact us and we&apos;ll delete it.
         </p>
       </Section>

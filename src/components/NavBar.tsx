@@ -26,6 +26,7 @@ export function NavBar() {
           {[
             ...links,
             ...(!loading && !user ? [{ href: "/profile", label: "Progress" }] : []),
+            ...(role === "admin" || role === "teacher" ? [{ href: "/activity", label: "Activity" }] : []),
             ...(role === "admin" ? [{ href: "/admin", label: "Admin" }] : []),
           ].map((l) => (
             <Link

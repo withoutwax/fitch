@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/AuthProvider";
+import { ConsentGate } from "@/components/ConsentGate";
 import { NavBar } from "@/components/NavBar";
 import { NotationProvider } from "@/components/NotationProvider";
+import { PresenceTracker } from "@/components/PresenceTracker";
 import { SITE } from "@/lib/site";
 import Link from "next/link";
 import "./globals.css";
@@ -29,6 +31,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <AuthProvider>
           <NotationProvider>
             <NavBar />
+            <PresenceTracker />
+            <ConsentGate />
             <main className="flex flex-1 flex-col">{children}</main>
             <footer className="border-t border-line">
               <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-1 px-4 py-5 text-xs text-muted">

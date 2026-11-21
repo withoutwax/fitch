@@ -56,6 +56,7 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
   const { fmt } = useNotation();
   const { progress, loading, reload } = useProgress();
   const mine = progress[problem.id];
+  const options = useMemo(() => ({ allowShortcut: problem.allowShortcut }), [problem.allowShortcut]);
   const goal = useMemo(() => parseFormula(problem.goal), [problem.goal]);
 
   const [edited, setLines] = useState<ProofLine[] | null>(null);
@@ -84,7 +85,7 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
     if (lines) reportPresence.lines(problem.id, lines.length);
   }, [lines, problem.id]);
 
-  const check = useMemo(() => (lines ? checkProof(lines, goal) : null), [lines, goal]);
+  const check = useMemo(() => (lines ? checkProof(lines, goal, options) : null), [lines, goal, options]);
 
   const onChange = (updated: ProofLine[]) => {
     setLines(updated);
@@ -119,7 +120,7 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
   const wantsSolution = useSearchParams().get("solution") === "1";
   const [answerStep, setAnswerStep] = useState<"hidden" | "loading" | "shown" | "missing">("hidden");
   const [answer, setAnswer] = useState<ProofLine[] | null>(null);
-  const answerCheck = useMemo(() => (answer ? checkProof(answer, goal) : null), [answer, goal]);
+  const answerCheck = useMemo(() => (answer ? checkProof(answer, goal, options) : null), [answer, goal, options]);
 
   const revealAnswer = async () => {
     setAnswerStep("loading");
@@ -276,7 +277,7 @@ export function Solver({ problem, prev, next }: { problem: Problem; prev: Neighb
 
         <div className="flex-1">
           {lines && check ? (
-            <ProofEditor lines={lines} results={check.lines} onChange={onChange} />
+            <ProofEditor options={options} lines={lines} results={check.lines} onChange={onChange} />
           ) : (
             <div className="grid h-60 place-items-center text-muted">
               <Spinner />

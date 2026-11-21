@@ -15,4 +15,5 @@ export interface Problem {
   goal: string;
   description: string;
   hint: string;
+  allowShortcut?: boolean;
 }

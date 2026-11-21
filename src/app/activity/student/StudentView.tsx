@@ -321,12 +321,12 @@ function Attempt({ label, solved, at, lineCount, proof, problem, open, onToggle 
 function SubmittedProof({ proof, problem }: { proof: ProofLine[]; problem: Problem | undefined }) {
   const check = useMemo(() => {
     try {
-      return checkProof(proof, problem ? parseFormula(problem.goal) : undefined);
+      return checkProof(proof, problem ? parseFormula(problem.goal) : undefined, { allowShortcut: problem?.allowShortcut });
     } catch {
       return null;
     }
   }, [proof, problem]);
-  const results = check?.lines ?? proof.map(() => ({ ok: true }));
+  const results = check?.lines ?? proof.map(() => ({ ok: true, assumptions: [] }));
 
   return (
     <div className="border-t border-line">

@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { deleteLines, lastDepth, needsSubproof, newId, runAction, withoutBlanks, type Action, type Prompt } from "@/lib/fitch/apply";
-import type { LineResult, ProofLine } from "@/lib/fitch/checker";
-import { prettify } from "@/lib/fitch/formula";
+import type { LineResult, ProofLine, ProofOptions } from "@/lib/fitch/checker";
+import { parseFormula, prettify, showStanford } from "@/lib/fitch/formula";
+import { advancedRuleAvailable, type AdvancedVocabulary, type AdvancedRule } from "@/lib/fitch/advancedRules";
+import { coalesceProof, copySelection, deleteProofSelection, pasteProof, replaceProofExpression } from "@/lib/fitch/proofCommands";
+import { exportStanfordXml, importStanfordXml } from "@/lib/fitch/stanfordXml";
 import { toSymbols, type Notation } from "@/lib/fitch/notation";
 import { RULE_BY_ID, RULES, type RuleId } from "@/lib/fitch/rules";
 import { useNotation } from "./NotationProvider";
@@ -25,7 +28,12 @@ const PALETTE: { sym: string; title: string }[] = [
   { sym: "≠", title: "Not identical" },
 ];
 
-const GROUPS = ["Structural", "Propositional", "Quantifiers", "Identity"] as const;
+const GROUPS = ["Structural", "Propositional", "Quantifiers", "Identity", "Advanced"] as const;
+const ADVANCED = ["truthTable", "domainClosure", "induction", "rationalEquation", "rationalInduction"] as const;
+type EditorAction = Action | "replace";
+type Workspace = { vocabulary: AdvancedVocabulary; setVocabulary: (vocabulary: AdvancedVocabulary) => void };
+type Snapshot = { lines: ProofLine[]; vocabulary?: AdvancedVocabulary };
+const DEFAULT_OPTIONS: ProofOptions = {};
 
 // Laid out like the button panel of Stanford's Fitch tool, one column at a time.
 const RULE_COLUMNS: (RuleId | "assume")[][] = [
@@ -62,31 +70,39 @@ interface Props {
   results: LineResult[];
   onChange: (lines: ProofLine[]) => void;
   readOnly?: boolean;
+  options?: ProofOptions;
+  workspace?: Workspace;
 }
 
-export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
+export function ProofEditor({ lines, results, onChange, readOnly, options = DEFAULT_OPTIONS, workspace }: Props) {
   const inputs = useRef(new Map<string, HTMLInputElement>());
   const [focusId, setFocusId] = useState<string | null>(null);
   // Where to put the caret once the next render (with the new lines) lands.
   const pendingFocus = useRef<{ id: string; caret?: number } | null>(null);
   const [checked, setChecked] = useState<string[]>([]);
-  const [past, setPast] = useState<ProofLine[][]>([]);
-  const [future, setFuture] = useState<ProofLine[][]>([]);
+  const [past, setPast] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
   // Consecutive typing in one line undoes as a single step.
   const typingIn = useRef<string | null>(null);
-  const [pending, setPending] = useState<{ action: Action; prompt: Prompt } | null>(null);
+  const [pending, setPending] = useState<{ action: EditorAction; prompt: Prompt } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [clipboard, setClipboard] = useState("");
+  const [pasteText, setPasteText] = useState<string | null>(null);
+  const [pasteAt, setPasteAt] = useState<number | null>(null);
+  const fileControl = useRef<HTMLInputElement>(null);
   const { notation, fmt } = useNotation();
   const premiseCount = lines.filter((l) => l.kind === "premise").length;
-  const hasSubproof = lines.some((l) => l.kind === "assumption");
+  const hasSubproof = workspace ? lastDepth(lines) > 0 : lines.some((l) => l.kind === "assumption");
   const allChecked = lines.length > 0 && lines.every((l) => checked.includes(l.id));
 
   const toggle = (id: string) => setChecked((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
 
+  const snapshot = (): Snapshot => ({ lines, vocabulary: workspace?.vocabulary });
+
   /** Change the proof, recording the current one for Undo. */
   const commit = (next: ProofLine[]) => {
-    setPast([...past, lines]);
+    setPast([...past, snapshot()]);
     setFuture([]);
     typingIn.current = null;
     setChecked([]);
@@ -95,29 +111,100 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
     onChange(next);
   };
 
-  const restore = (from: ProofLine[][], to: ProofLine[][], setFrom: (s: ProofLine[][]) => void, setTo: (s: ProofLine[][]) => void) => {
+  const restore = (from: Snapshot[], to: Snapshot[], setFrom: (s: Snapshot[]) => void, setTo: (s: Snapshot[]) => void) => {
     const snap = from[from.length - 1];
     if (!snap) return;
     setFrom(from.slice(0, -1));
-    setTo([...to, lines]);
+    setTo([...to, snapshot()]);
     typingIn.current = null;
     setChecked([]);
     setPending(null);
     setNotice(null);
-    onChange(snap);
+    if (snap.vocabulary) workspace?.setVocabulary(snap.vocabulary);
+    onChange(snap.lines);
   };
 
-  const run = (action: Action, input?: string) => {
+  const run = (action: EditorAction, input?: string, secondary?: string) => {
+    setPasteText(null);
+    if (action === "replace") {
+      if (input === undefined) {
+        setPending({ action, prompt: {
+          title: "Replace", help: "Replace an expression throughout this proof.", initial: "", placeholder: "p",
+          second: { label: "Replacement", initial: "", placeholder: "q" },
+        } });
+        return;
+      }
+      perform(() => {
+        if (!input.trim() || !secondary?.trim()) throw new Error("Enter both expressions.");
+        commit(replaceProofExpression(lines, input.trim(), secondary.trim()));
+      });
+      return;
+    }
     // The next line goes where the last row sits, and an empty row gives way to it.
     const filled = withoutBlanks(lines);
     const level = Math.min(lastDepth(lines), lastDepth(filled));
-    const out = runAction(action, { lines: filled, checked, level, input });
+    const out = runAction(action, { lines: filled, checked, level, input, secondary, options });
     if (out.kind === "error") setNotice(out.error);
     else if (out.kind === "prompt") {
       setNotice(null);
       setPending({ action, prompt: out.prompt });
     } else commit(out.lines);
   };
+
+  const perform = (action: () => void) => {
+    try {
+      setNotice(null);
+      action();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not complete this action.");
+    }
+  };
+
+  const formattedXml = (rows: ProofLine[]) => exportStanfordXml(rows, {
+    ...workspace?.vocabulary,
+    formatSentence: (text) => showStanford(parseFormula(text)),
+  });
+
+  const copy = () => perform(() => {
+    if (!checked.length) throw new Error("Select the lines to copy.");
+    const data = formattedXml(copySelection(lines, checked));
+    setClipboard(data);
+    navigator.clipboard?.writeText(data).catch(() => {});
+  });
+
+  const paste = (data: string) => perform(() => {
+    const imported = importStanfordXml(data, newId);
+    const previous = workspace?.vocabulary;
+    const next = pasteProof(lines, imported.lines, newId, pasteAt ?? lines.length);
+    if (previous) workspace.setVocabulary({
+      objects: [...new Set([...previous.objects, ...imported.objects])],
+      functions: [...new Set([...previous.functions, ...imported.functions])],
+    });
+    commit(next);
+    setPasteText(null);
+  });
+
+  const load = async (file?: File) => {
+    if (!file) return;
+    try {
+      if (file.size > 1_000_000) throw new Error("This proof file is too large.");
+      const data = importStanfordXml(await file.text(), newId);
+      workspace?.setVocabulary({ objects: data.objects, functions: data.functions });
+      commit(data.lines);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not load the proof.");
+    }
+  };
+
+  const save = () => perform(() => {
+    const blob = new Blob([formattedXml(lines)], { type: "application/xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "proof.xml";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
 
   const focusLine = (id: string, caret?: number) => {
     const el = inputs.current.get(id);
@@ -142,7 +229,7 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
 
   const update = (i: number, patch: Partial<ProofLine>) => {
     if (typingIn.current !== lines[i].id) {
-      setPast([...past, lines]);
+      setPast([...past, snapshot()]);
       setFuture([]);
       typingIn.current = lines[i].id;
     }
@@ -219,7 +306,21 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
 
   return (
     <div className="flex flex-col">
-      {!readOnly && (
+      {!readOnly && workspace && (
+        <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2">
+          <ToolButton onClick={() => restore(past, future, setPast, setFuture)} keys="Undo the last change" disabled={!past.length}>Undo</ToolButton>
+          <ToolButton onClick={() => restore(future, past, setFuture, setPast)} keys="Redo the last change" disabled={!future.length}>Redo</ToolButton>
+          <ToolButton keys="Copy selected lines" onClick={copy} disabled={!checked.length}>Copy</ToolButton>
+          <ToolButton keys="Paste a proof" onClick={() => { setPasteAt(null); setPending(null); setPasteText(clipboard); }}>Paste</ToolButton>
+          <ToolButton keys="Load a Stanford Fitch XML file" onClick={() => fileControl.current?.click()}>Load</ToolButton>
+          <input ref={fileControl} type="file" accept=".xml,text/xml,application/xml" className="hidden" aria-label="Proof file"
+            onChange={(event) => { void load(event.target.files?.[0]); event.target.value = ""; }} />
+          <ToolButton keys="Download the proof as Stanford Fitch XML" onClick={save} disabled={!lines.length}>Save</ToolButton>
+          <a href="https://logic.stanford.edu/logica/homepage/fitchlibrary.php" target="_blank" rel="noreferrer" className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-text">Library</a>
+          <ToolButton keys="How to enter a proof" onClick={() => setShowHelp(!showHelp)}>{showHelp ? "Hide help" : "Help"}</ToolButton>
+        </div>
+      )}
+      {!readOnly && !workspace && (
         <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2">
           {PALETTE.map((p) => (
             <button
@@ -264,9 +365,9 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
 
       {!readOnly && showHelp && (
         <p className="border-b border-line px-4 py-3 text-xs leading-relaxed text-muted">
-          You can type a line yourself, or tick the lines a rule uses and click its button to have the line added for you. And Introduction joins lines in
-          the order you ticked them. Rules that finish a subproof use the one you&apos;re in or the one that just ended; to use an earlier one, tick any line
-          inside it.
+          {workspace
+            ? "Add a premise or an assumption, then select the lines a rule uses and click the rule. Enter Stanford notation such as AX:p(X) or use logic symbols."
+            : "Type a line yourself, or select the lines a rule uses and click its button. Rules that finish a subproof can use the active subproof or a completed subproof you select."}
         </p>
       )}
 
@@ -302,6 +403,9 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
               onToggle={() => toggle(line.id)}
               barBelow={line.kind === "assumption" || (line.kind === "premise" && i === premiseCount - 1)}
               readOnly={readOnly}
+              commandOnly={!!workspace}
+              allowShortcut={options.allowShortcut}
+              allowAdvanced={options.allowAdvanced}
               inputRef={(el) => {
                 if (el) inputs.current.set(line.id, el);
                 else inputs.current.delete(line.id);
@@ -321,12 +425,33 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
         <PromptPanel
           key={pending.action}
           prompt={pending.prompt}
-          onSubmit={(value) => run(pending.action, value)}
+          nativeInput={!!workspace}
+          onSubmit={(value, second) => run(pending.action, value, second)}
           onCancel={() => {
             setPending(null);
             setNotice(null);
           }}
         />
+      )}
+
+      {pasteText !== null && (
+        <form className="space-y-2 border-t border-line p-4" onSubmit={(event) => { event.preventDefault(); paste(pasteText); }}>
+          <label className="block text-xs font-medium">
+            Insert
+            <select className="ml-2 rounded-md border border-line bg-surface px-2 py-1"
+              value={pasteAt === null ? "" : pasteAt + 1} onChange={(event) => setPasteAt(event.target.value ? Number(event.target.value) - 1 : null)}>
+              <option value="">At the end</option>
+              {lines.map((line, i) => <option key={line.id} value={i + 1}>Before line {i + 1}</option>)}
+            </select>
+          </label>
+          <label htmlFor="proof-paste" className="block text-sm font-medium">Paste proof XML</label>
+          <textarea id="proof-paste" value={pasteText} onChange={(event) => setPasteText(event.target.value)}
+            rows={4} className="w-full rounded-md border border-line bg-surface p-2 font-logic text-sm" />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setPasteText(null)} className="px-3 py-1.5 text-xs">Cancel</button>
+            <button type="submit" className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg">Paste proof</button>
+          </div>
+        </form>
       )}
 
       {notice && (
@@ -335,8 +460,25 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
         </p>
       )}
 
+      {!readOnly && workspace && (
+        <div className="grid grid-cols-2 gap-1 border-t border-line bg-surface-2/60 p-3 sm:grid-cols-4">
+          <RuleButton onClick={() => run("premise")} title="Add a premise to the proof">Premise</RuleButton>
+          <RuleButton onClick={() => run("replace")} title="Replace an expression throughout this proof">Replace</RuleButton>
+          <RuleButton onClick={() => perform(() => commit(coalesceProof(lines, checked)))} disabled={!checked.length} title="Merge selected lines with earlier matching lines">Coalesce</RuleButton>
+          <RuleButton onClick={() => perform(() => commit(deleteProofSelection(lines, checked)))} disabled={!checked.length} title="Delete selected lines and their dependents">Delete</RuleButton>
+          {ADVANCED.map((id) => (
+            <RuleButton key={id} onClick={() => run(id)} title={RULE_BY_ID[id].description}
+              disabled={!advancedRuleAvailable(id as AdvancedRule, [], workspace.vocabulary)}>
+              {RULE_BY_ID[id].name}
+            </RuleButton>
+          ))}
+        </div>
+      )}
       {!readOnly && (
         <div className="grid grid-cols-2 gap-x-1.5 gap-y-1 border-t border-line bg-surface-2/60 p-3 sm:grid-cols-4">
+          {options.allowShortcut && (
+            <RuleButton onClick={() => run("shortcut")} title={RULE_BY_ID.shortcut.description}>Shortcut</RuleButton>
+          )}
           {RULE_COLUMNS.map((column, k) => (
             <div key={k} className="flex flex-col gap-1">
               {column.map((id) =>
@@ -363,15 +505,16 @@ export function ProofEditor({ lines, results, onChange, readOnly }: Props) {
   );
 }
 
-function PromptPanel({ prompt, onSubmit, onCancel }: { prompt: Prompt; onSubmit: (value: string) => void; onCancel: () => void }) {
+function PromptPanel({ prompt, nativeInput, onSubmit, onCancel }: { prompt: Prompt; nativeInput: boolean; onSubmit: (value: string, secondary?: string) => void; onCancel: () => void }) {
   // `value` is kept in standard symbols; the input shows it in the student's notation.
   const [value, setValue] = useState(prompt.initial);
+  const [secondary, setSecondary] = useState(prompt.second?.initial ?? "");
   const input = useRef<HTMLInputElement>(null);
   const { notation, fmt } = useNotation();
-  const shown = prompt.term ? value : fmt(value);
+  const shown = prompt.term || nativeInput ? value : fmt(value);
 
   const edit = (next: string, caret: number) => {
-    if (prompt.term) return setValue(next);
+    if (prompt.term || nativeInput) return setValue(next);
     const out = readFormula(next, caret, notation, fmt, prettify);
     setValue(out.text);
     requestAnimationFrame(() => {
@@ -392,7 +535,7 @@ function PromptPanel({ prompt, onSubmit, onCancel }: { prompt: Prompt; onSubmit:
       className="space-y-2 border-t border-line bg-accent-soft/50 px-4 py-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(value);
+        onSubmit(value, prompt.second ? secondary : undefined);
       }}
     >
       <div>
@@ -413,6 +556,13 @@ function PromptPanel({ prompt, onSubmit, onCancel }: { prompt: Prompt; onSubmit:
         placeholder={fmt(prompt.placeholder)}
         className="h-9 w-full rounded-md border border-line bg-surface px-2 font-logic text-[15px] outline-none placeholder:text-muted/60 focus:border-accent"
       />
+      {prompt.second && (
+        <label className="block text-xs font-medium">
+          {prompt.second.label}
+          <input value={secondary} onChange={(event) => setSecondary(event.target.value)} placeholder={prompt.second.placeholder}
+            className="mt-1 h-9 w-full rounded-md border border-line bg-surface px-2 font-logic text-sm" autoComplete="off" />
+        </label>
+      )}
       <div className="flex flex-wrap items-center gap-1">
         {!prompt.term &&
           PALETTE.map((p) => (
@@ -486,6 +636,9 @@ interface RowProps {
   onToggle: () => void;
   barBelow: boolean;
   readOnly?: boolean;
+  commandOnly?: boolean;
+  allowShortcut?: boolean;
+  allowAdvanced?: boolean;
   inputRef: (el: HTMLInputElement | null) => void;
   onFocus: () => void;
   onText: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -495,7 +648,7 @@ interface RowProps {
   onRefsEnter: () => void;
 }
 
-function Row({ index, line, result, focused, checked, onToggle, barBelow, readOnly, inputRef, onFocus, onText, onKey, onRule, onRefs, onRefsEnter }: RowProps) {
+function Row({ index, line, result, focused, checked, onToggle, barBelow, readOnly, commandOnly, allowShortcut, allowAdvanced, inputRef, onFocus, onText, onKey, onRule, onRefs, onRefsEnter }: RowProps) {
   const isStep = line.kind === "step";
   const blank = !line.text.trim() && (!isStep || (!line.rule && !line.refs.trim()));
   const showError = result && !result.ok && !blank;
@@ -536,9 +689,9 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
           ref={inputRef}
           value={text}
           onChange={onText}
-          onKeyDown={onKey}
+          onKeyDown={commandOnly ? undefined : onKey}
           onFocus={onFocus}
-          readOnly={readOnly || line.kind === "premise"}
+          readOnly={readOnly || commandOnly || line.kind === "premise"}
           spellCheck={false}
           autoComplete="off"
           aria-label={`Line ${index + 1} formula`}
@@ -555,21 +708,24 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
             <span
               className={`pointer-events-none absolute inset-0 flex items-center justify-between gap-1 px-2 ${words ? "font-sans text-[13px]" : "font-logic text-sm"} ${line.rule ? "text-text" : "text-muted"}`}
             >
-              {line.rule ? <span className="truncate">{ruleName(RULE_BY_ID[line.rule])}</span> : <span className="font-sans">Rule…</span>}
-              {!readOnly && <span className="text-[10px] text-muted">▾</span>}
+              {line.rule ? <span className="truncate" title={line.justification}>{line.justification || ruleName(RULE_BY_ID[line.rule])}</span> : <span className="font-sans">Rule…</span>}
+              {!readOnly && !commandOnly && <span className="text-[10px] text-muted">▾</span>}
             </span>
           <select
             value={line.rule}
             onChange={(e) => onRule(e.target.value as RuleId | "")}
             onFocus={onFocus}
-            disabled={readOnly}
+            disabled={readOnly || commandOnly}
             aria-label={`Line ${index + 1} rule`}
             className="absolute inset-0 w-full cursor-pointer opacity-0"
           >
             <option value="">Rule…</option>
-            {GROUPS.map((g) => (
+            {GROUPS.filter((g) => g !== "Advanced" || allowAdvanced || allowShortcut ||
+              (line.rule && RULE_BY_ID[line.rule].group === g)).map((g) => (
               <optgroup key={g} label={g}>
-                {RULES.filter((r) => r.group === g).map((r) => (
+                {RULES.filter((r) => r.group === g && (
+                  r.group !== "Advanced" || r.id === line.rule || (r.id === "shortcut" ? allowShortcut : allowAdvanced)
+                )).map((r) => (
                   <option key={r.id} value={r.id}>
                     {words ? r.name : `${fmt(r.label)} ${r.name}`}
                   </option>
@@ -589,13 +745,13 @@ function Row({ index, line, result, focused, checked, onToggle, barBelow, readOn
             value={line.refs}
             onChange={(e) => onRefs(e.target.value.replace(/[^\d,\s\-–]/g, ""))}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (!commandOnly && e.key === "Enter") {
                 e.preventDefault();
                 onRefsEnter();
               }
             }}
             onFocus={onFocus}
-            readOnly={readOnly}
+            readOnly={readOnly || commandOnly}
             placeholder="lines"
             aria-label={`Line ${index + 1} citations`}
             className="h-8 w-full rounded-md border border-transparent bg-transparent px-2 font-logic text-sm outline-none placeholder:font-sans placeholder:text-muted/60 hover:border-line focus:border-accent"

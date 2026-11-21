@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deleteLines, runAction, withoutBlanks, type Action } from "./apply";
 import { checkProof, type ProofLine } from "./checker";
-import { equal, instanceTerm, parseFormula, type Formula } from "./formula";
+import { equal, instanceTerm, parseFormula, showTerm, type Formula } from "./formula";
 import { PROBLEMS } from "../../../seed/problems";
 import { build, SOLUTIONS, type Row } from "../../../seed/solutions";
 
@@ -20,6 +20,7 @@ function replay(rows: Row[]): ProofLine[] {
       .map((p) => lines[Number(p.split(/[-–]/)[0]) - 1].id);
     const level = rule === "A" ? depth - 1 : depth;
     let input: string | undefined = undefined;
+    let secondary: string | undefined;
     const first = runAction(action, { lines, checked, level });
     if (first.kind === "prompt") {
       input = text;
@@ -28,14 +29,15 @@ function replay(rows: Row[]): ProofLine[] {
         else if (rule === "allI") {
           // The name the cited line has where the universal has its variable.
           const g = parseFormula(text) as Extract<Formula, { t: "all" | "ex" }>;
-          input = (instanceTerm(g.body, g.v, parseLine(lines.find((l) => l.id === checked[0])!)) || "zz") as string;
+          input = showTerm(instanceTerm(g.body, g.v, parseLine(lines.find((l) => l.id === checked[0])!)) || "zz");
+          secondary = g.v;
         } else {
           const g = parseLine(lines.find((l) => l.id === checked[0])!) as Extract<Formula, { t: "all" | "ex" }>;
-          input = (instanceTerm(g.body, g.v, parseFormula(text)) || "a") as string;
+          input = showTerm(instanceTerm(g.body, g.v, parseFormula(text)) || "a");
         }
       }
     }
-    const out = input === undefined ? first : runAction(action, { lines, checked, level, input });
+    const out = input === undefined ? first : runAction(action, { lines, checked, level, input, secondary });
     if (out.kind !== "done") throw new Error(`${text} by ${rule} ${refs}: ${out.kind === "error" ? out.error : "asked again"}`);
     const fresh = out.lines.slice(lines.length);
     if (rule === "A") {
@@ -142,6 +144,50 @@ describe("rule buttons", () => {
     const lines = start("P");
     const out = runAction("orI", { lines, checked: [lines[0].id], level: 0, input: "Q ∨ R" });
     expect(out.kind).toBe("error");
+  });
+});
+
+describe("Stanford workspace actions", () => {
+  const options = { exactSyntax: true };
+
+  it("appends a new premise at the current position", () => {
+    const lines = build([[1, "p", "A"]]);
+    const out = runAction("premise", { lines, checked: [], level: 1, options, input: "q" });
+    expect(out.kind === "done" && out.lines.map(({ kind, text, depth }) => [kind, text, depth]))
+      .toEqual([["assumption", "p", 1], ["premise", "q", 1]]);
+  });
+
+  it("adds both disjunction orders for each selected row", () => {
+    const lines = start("p", "q");
+    const out = runAction("orI", { lines, checked: lines.map((line) => line.id), level: 0, options, input: "r" });
+    expect(out.kind === "done" && out.lines.slice(2).map((row) => row.text))
+      .toEqual(["p ∨ r", "r ∨ p", "q ∨ r", "r ∨ q"]);
+  });
+
+  it("uses each nonempty subset of witness occurrences", () => {
+    const lines = start("p(a,a)");
+    const out = runAction("exI", { lines, checked: [lines[0].id], level: 0, options, input: "a", secondary: "X" });
+    expect(out.kind === "done" && out.lines.slice(1).map((row) => row.text))
+      .toEqual(["∃X p(a, X)", "∃X p(X, a)", "∃X p(X, X)"]);
+  });
+
+  it("uses one equality twice when it can rewrite itself", () => {
+    const lines = start("a=b");
+    const out = runAction("eqE", { lines, checked: [lines[0].id], level: 0, options, input: "b=b" });
+    expect(out.kind === "done" && [out.lines[1].text, out.lines[1].refs]).toEqual(["b = b", "1, 1"]);
+  });
+
+  it("checks the entered placeholder even for a vacuous universal introduction", () => {
+    const lines = start("p(c)", "q");
+    const out = runAction("allI", { lines, checked: [lines[1].id], level: 0, options, input: "c", secondary: "X" });
+    expect(out.kind).toBe("error");
+  });
+
+  it("allows a shortcut only for enabled proofs", () => {
+    const args = { lines: start("p"), checked: [], level: 0, input: "q", secondary: "Known result" };
+    expect(runAction("shortcut", args).kind).toBe("error");
+    const out = runAction("shortcut", { ...args, options: { allowShortcut: true } });
+    expect(out.kind === "done" && out.lines[1].justification).toBe("Known result");
   });
 });
 

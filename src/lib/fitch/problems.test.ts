@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkProof } from "./checker";
-import { type Formula, parseFormula } from "./formula";
+import { parseFormula, type Formula, type Term } from "./formula";
 import { PROBLEMS, type Problem } from "../../../seed/problems";
 import { build, SOLUTIONS } from "../../../seed/solutions";
 
@@ -61,7 +61,9 @@ function canonical(fs: Formula[]): string {
   const preds = new Map<string, string>();
   const terms = new Map<string, string>();
   const pr = (s: string) => preds.get(s) ?? (preds.set(s, `P${preds.size}`), preds.get(s)!);
-  const tm = (s: string) => terms.get(s) ?? (terms.set(s, `t${terms.size}`), terms.get(s)!);
+  const tm = (s: Term): string => typeof s === "string"
+    ? terms.get(s) ?? (terms.set(s, `t${terms.size}`), terms.get(s)!)
+    : `${s.name}(${s.args.map(tm).join(",")})`;
   const go = (f: Formula): string => {
     switch (f.t) {
       case "atom":

@@ -1,10 +1,17 @@
 # Fitch
 
-A LeetCode-style practice site for Fitch natural deduction proofs. Students pick from 50 problems, build proofs in a
+A LeetCode-style practice site for Fitch natural deduction proofs. Students pick from 100 problems, build proofs in a
 line-by-line editor that checks every step as they type, and see what they've solved (and when) on their profile.
 No account is needed: guests' progress is saved in the browser, and moves into their Firebase account when they sign in.
 
 Built with Next.js (App Router) and Firebase (Auth + Firestore).
+
+## Proof workspace
+
+Open `/workspace` to build standalone proofs using Stanford Fitch notation such as `AX:p(X)`.
+The workspace supports object and function constants, the Stanford rule buttons, and Stanford Fitch XML files.
+The guided exercises use the same checker and keep their required premises and goal.
+Shortcuts are available in the workspace. A guided exercise can enable them with `allowShortcut: true`.
 
 ## Run it locally (no Firebase account needed)
 
@@ -52,11 +59,12 @@ Guests get the same data in `localStorage` under `fitch:guest` (see `src/lib/loc
 
 ## Project layout
 
-- `src/lib/fitch/formula.ts`: formula parser (Unicode and ASCII: `~ & | -> <-> # Ax Ex`), printer, and alpha-equivalence and substitution helpers
-- `src/lib/fitch/checker.ts`: proof checker covering subproof structure, line/subproof accessibility, and all 19 rules (LPL-style)
-- `src/lib/fitch/problems.ts`: the 50 problems. Model solutions live only in `checker.test.ts`, so answers never ship to the browser
-- `src/components/ProofEditor.tsx`: the Fitch editor
-- `src/app/`: pages: `/problems`, `/problems/[id]`, `/profile`, `/login`, `/rules`
+- `src/lib/fitch/formula.ts` parses and prints Unicode and Stanford ASCII formulas and terms.
+- `src/lib/fitch/checker.ts` validates proof steps, subproofs, and citation scope.
+- `src/lib/fitch/stanfordXml.ts` reads and writes Stanford proof archives.
+- `seed/problems.ts` and `seed/solutions.ts` define the exercises and model answers.
+- `src/components/ProofEditor.tsx` implements the shared proof editor.
+- `src/app/workspace/` hosts the standalone proof workspace.
 
 ```bash
 npm test   # verifies every problem is solvable and that bad proofs are rejected
@@ -64,7 +72,7 @@ npm test   # verifies every problem is solvable and that bad proofs are rejected
 
 ### Adding a problem
 
-Append an entry to `PROBLEMS` in `src/lib/fitch/problems.ts`, add a model proof to `SOLUTIONS` in `checker.test.ts`, and run
+Append an entry to `PROBLEMS` in `seed/problems.ts`, add a model proof to `SOLUTIONS` in `seed/solutions.ts`, and run
 `npm test`.
 
 ## Notes

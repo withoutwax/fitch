@@ -7,6 +7,7 @@ import { NotationToggle } from "./NotationProvider";
 
 const links = [
   { href: "/problems", label: "Problems" },
+  { href: "/workspace", label: "Workspace" },
   { href: "/rules", label: "Rules" },
 ];
 

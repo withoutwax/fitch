@@ -1,4 +1,5 @@
-import { equal, flatten, freeNames, instanceTerm, parseFormula, replacesSome, show, type Formula } from "./formula";
+import { equal, equalTerm, freeNames, instanceTerm, parseFormula, replacesSome, show, strictEqual, termNames, type Formula } from "./formula";
+import { validateAdvancedRule, type AdvancedVocabulary } from "./advancedRules";
 import { RULE_BY_ID, type RuleId } from "./rules";
 
 export type LineKind = "premise" | "assumption" | "step";
@@ -10,12 +11,14 @@ export interface ProofLine {
   text: string;
   rule: RuleId | "";
   refs: string;
+  justification?: string;
 }
 
 export interface LineResult {
   ok: boolean;
   error?: string;
   formula?: Formula;
+  assumptions: number[];
 }
 
 export interface CheckResult {
@@ -37,9 +40,18 @@ interface CitedSubproof {
 }
 
 /** What a rule may need to know about where its cited lines sit. */
+export interface ProofOptions {
+  vocabulary?: AdvancedVocabulary;
+  allowShortcut?: boolean;
+  allowAdvanced?: boolean;
+  exactSyntax?: boolean;
+}
+
 interface RuleContext {
   /** Premises and still-open assumptions in force at each cited line, in citation order. */
   actives: Formula[][];
+  options: ProofOptions;
+  previous: Formula[];
 }
 
 class RuleError extends Error {}
@@ -65,9 +77,9 @@ export function parseRefs(src: string): Ref[] {
   return refs;
 }
 
-export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
+export function checkProof(lines: ProofLine[], goal?: Formula, options: ProofOptions = {}): CheckResult {
   const n = lines.length;
-  const results: LineResult[] = lines.map(() => ({ ok: true }));
+  const results: LineResult[] = lines.map(() => ({ ok: true, assumptions: [] }));
   const err = (i: number, msg: string) => {
     if (results[i].ok) results[i] = { ...results[i], ok: false, error: msg };
   };
@@ -84,7 +96,11 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
     while (stack.length && subs[stack[stack.length - 1]].depth > depth) close(i - 1);
     const cur = () => (stack.length ? subs[stack[stack.length - 1]].depth : 0);
     if (kind === "premise") {
-      if (depth !== 0 || i > 0 && lines[i - 1].kind !== "premise") err(i, "Premises must come first, at the outer level");
+      if (options.exactSyntax) {
+        if (depth !== cur()) err(i, "This premise is at the wrong proof depth");
+      } else if (depth !== 0 || i > 0 && lines[i - 1].kind !== "premise") {
+        err(i, "Premises must come first, at the outer level");
+      }
     } else if (kind === "assumption") {
       if (stack.length && cur() === depth) close(i - 1);
       if (depth !== cur() + 1) err(i, "This assumption is nested more deeply than any open subproof allows");
@@ -97,11 +113,11 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
   }
   while (stack.length) close(n - 1);
 
-  const lineAccessible = (j: number, i: number) => j < i && ctx[j].every((s) => ctx[i].includes(s));
+  const lineAccessible = (j: number, i: number) => j < i && results[j].assumptions.every((a) => ctx[i].some((s) => subs[s].start === a));
   const subAt = (start: number) => subs.findIndex((s) => s.start === start);
   // The premises, and the assumptions of the subproofs still open at line j.
   const activeAt = (j: number) =>
-    [...lines.flatMap((l, k) => (l.kind === "premise" ? [k] : [])), ...ctx[j].map((s) => subs[s].start)]
+    [...lines.flatMap((l, k) => l.kind === "premise" && (!options.exactSyntax || k <= j) ? [k] : []), ...ctx[j].map((s) => subs[s].start)]
       .map((k) => results[k]?.formula)
       .filter((f): f is Formula => !!f);
 
@@ -109,7 +125,9 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
   for (let i = 0; i < n; i++) {
     const line = lines[i];
     try {
-      results[i] = { ...results[i], formula: parseFormula(line.text) };
+      const formula = parseFormula(line.text);
+      if ([...freeNames(formula)].some((name) => /^[A-Z]/.test(name))) fail("The sentence contains a free variable");
+      results[i] = { ...results[i], formula, assumptions: line.kind === "assumption" ? [i] : [] };
     } catch (e) {
       err(i, e instanceof Error ? e.message : String(e));
     }
@@ -127,6 +145,7 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
       const cLines: Formula[] = [];
       const cSubs: CitedSubproof[] = [];
       const actives: Formula[][] = [];
+      const assumptions = new Set<number>();
       for (const { from, to } of cites) {
         if (from < 0 || to >= n) fail(`There is no line ${(from < 0 ? from : to) + 1}`);
         if (to >= i) fail(`Line ${i + 1} can only cite earlier lines`);
@@ -137,6 +156,7 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
           if (!r.ok) fail(`Line ${from + 1} has an error, fix it first`);
           cLines.push(r.formula!);
           actives.push(activeAt(from));
+          r.assumptions.forEach((a) => assumptions.add(a));
           continue;
         }
         if (from === to && lines[from].kind !== "assumption") fail(`Line ${from + 1} is inside a subproof that has already ended`);
@@ -151,9 +171,17 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
         for (let k = from; k <= to; k++) if (!results[k].ok) fail(`Line ${k + 1} inside the cited subproof has an error`);
         const last = results[to].formula;
         if (!last) fail(`The subproof ${from + 1}–${to + 1} has no conclusion`);
-        cSubs.push({ assumption: results[from].formula!, last: last! });
+        cSubs.push({ assumption: results[from].formula!, last });
+        for (const dependency of results[to].assumptions) {
+          if (dependency !== from) assumptions.add(dependency);
+        }
       }
-      applyRule(line.rule as RuleId, res.formula!, cLines, cSubs, { actives });
+      if (line.rule === "shortcut" && !line.justification?.trim()) fail("Enter a justification for the shortcut");
+      const previous = line.rule === "induction"
+        ? results.slice(0, i).flatMap((r) => r.ok && r.formula ? [r.formula] : [])
+        : [];
+      applyRule(line.rule, res.formula!, cLines, cSubs, { actives, options, previous });
+      res.assumptions = [...assumptions];
     } catch (e) {
       if (e instanceof RuleError) err(i, e.message);
       else throw e;
@@ -171,7 +199,7 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
     message = "Every line checks out.";
   } else if (last < 0 || lines[last].depth !== 0 || lines[last].kind !== "step") {
     message = "Every line checks out, but the proof must end on the outer level (close all subproofs).";
-  } else if (!equal(results[last].formula!, goal)) {
+  } else if (!(options.exactSyntax ? strictEqual : equal)(results[last].formula!, goal)) {
     message = `Every line checks out, but the last line should be the goal ${show(goal)}.`;
   } else {
     solved = true;
@@ -191,19 +219,36 @@ function expectCites(rule: RuleId, lines: Formula[], subs: CitedSubproof[], nLin
 // Only Implication Introduction and False Elimination discharge a subproof;
 // every other rule works on lines.
 function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], ctx: RuleContext): void {
+  const same = ctx.options.exactSyntax ? strictEqual : equal;
+  const vocabulary = ctx.options.vocabulary ?? { objects: [], functions: [] };
   switch (rule) {
+    case "shortcut":
+      if (!ctx.options.allowShortcut) fail("Shortcuts are unavailable for this proof");
+      expectCites(rule, L, S, [0, Infinity], 0);
+      return;
+
+    case "truthTable":
+    case "domainClosure":
+    case "induction":
+    case "rationalEquation":
+    case "rationalInduction":
+      if (!ctx.options.allowAdvanced) fail("This rule is unavailable for the current exercise");
+      expectCites(rule, L, S, rule === "rationalEquation" ? 0 : [rule === "truthTable" ? 0 : 1, Infinity], 0);
+      if (!validateAdvancedRule(rule, f, L, vocabulary, ctx.previous)) fail(`The cited lines and vocabulary do not justify this ${RULE_BY_ID[rule].name} step`);
+      return;
+
     case "reit":
       expectCites(rule, L, S, 1, 0);
-      if (!equal(L[0], f)) fail("Reit must repeat the cited formula exactly");
+      if (!same(L[0], f)) fail("Reit must repeat the cited formula exactly");
       return;
 
     case "andI": {
       expectCites(rule, L, S, [1, 2], 0);
       if (f.t !== "and") fail("∧I must produce a conjunction");
-      const parts = flatten(f, "and");
-      const binary = f.t === "and" ? [f.a, f.b] : [];
-      const covers = (want: Formula[]) => want.every((w) => L.some((l) => equal(l, w))) && L.every((l) => want.some((w) => equal(l, w)));
-      if (!covers(binary) && !covers(parts)) fail("Each conjunct must be one of the cited lines");
+      const [a, b = a] = L;
+      if (!(same(f.a, a) && same(f.b, b)) && !(same(f.a, b) && same(f.b, a))) {
+        fail("Each conjunct must be one of the cited lines");
+      }
       return;
     }
 
@@ -211,7 +256,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       expectCites(rule, L, S, 1, 0);
       if (L[0].t !== "and") fail("∧E must cite a conjunction");
       const g = L[0];
-      if (![g.a, g.b, ...flatten(g, "and")].some((c) => equal(c, f))) fail(`${show(f)} is not a conjunct of the cited line`);
+      if (![g.a, g.b].some((c) => same(c, f))) fail(`${show(f)} is not a conjunct of the cited line`);
       return;
     }
 
@@ -219,7 +264,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       expectCites(rule, L, S, 1, 0);
       if (f.t !== "or") fail("∨I must produce a disjunction");
       const d = f;
-      if (![d.a, d.b, ...flatten(d, "or")].some((x) => equal(x, L[0]))) fail("The cited line must be one of the disjuncts");
+      if (![d.a, d.b].some((x) => same(x, L[0]))) fail("The cited line must be one of the disjuncts");
       return;
     }
 
@@ -231,7 +276,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
         if (g.t !== "or") return false;
         const [x, y] = L.filter((_, k) => k !== d);
         const conds = (p: Formula, q: Formula) =>
-          p.t === "imp" && q.t === "imp" && equal(p.a, g.a) && equal(q.a, g.b) && equal(p.b, f) && equal(q.b, f);
+          p.t === "imp" && q.t === "imp" && same(p.a, g.a) && same(q.a, g.b) && same(p.b, f) && same(q.b, f);
         return conds(x, y) || conds(y, x);
       });
       if (!ok) fail(`∨E needs P ∨ Q, P → ${show(f)} and Q → ${show(f)}`);
@@ -243,8 +288,8 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       const a = S[0].assumption;
       if (f.t !== "imp") fail("→I must produce a conditional");
       const g = f;
-      if (!equal(a, g.a)) fail(`The subproof must assume the antecedent ${show(g.a)}`);
-      if (!equal(S[0].last, g.b)) fail(`The subproof must end with the consequent ${show(g.b)}`);
+      if (!same(a, g.a)) fail(`The subproof must assume the antecedent ${show(g.a)}`);
+      if (!same(S[0].last, g.b)) fail(`The subproof must end with the consequent ${show(g.b)}`);
       return;
     }
 
@@ -252,7 +297,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       expectCites(rule, L, S, 2, 0);
       const ok = [0, 1].some((k) => {
         const c = L[k];
-        return c.t === "imp" && equal(c.a, L[1 - k]) && equal(c.b, f);
+        return c.t === "imp" && same(c.a, L[1 - k]) && same(c.b, f);
       });
       if (!ok) fail("→E needs a conditional P → Q and its antecedent P, and produces Q");
       return;
@@ -263,7 +308,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       // φ → ψ, ψ → φ ⊢ φ ↔ ψ
       if (f.t !== "iff") fail("↔I must produce a biconditional");
       const g = f;
-      const conv = (p: Formula, q: Formula) => p.t === "imp" && q.t === "imp" && equal(p.a, g.a) && equal(p.b, g.b) && equal(q.a, g.b) && equal(q.b, g.a);
+      const conv = (p: Formula, q: Formula) => p.t === "imp" && q.t === "imp" && same(p.a, g.a) && same(p.b, g.b) && same(q.a, g.b) && same(q.b, g.a);
       if (!conv(L[0], L[1]) && !conv(L[1], L[0])) fail(`↔I needs ${show(g.a)} → ${show(g.b)} and ${show(g.b)} → ${show(g.a)}`);
       return;
     }
@@ -275,7 +320,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       if (g.t !== "iff") fail("↔E must cite a biconditional");
       const fwd: Formula = { t: "imp", a: g.a, b: g.b };
       const back: Formula = { t: "imp", a: g.b, b: g.a };
-      if (!equal(f, fwd) && !equal(f, back)) fail(`↔E turns ${show(g)} into ${show(fwd)} or ${show(back)}`);
+      if (!same(f, fwd) && !same(f, back)) fail(`↔E turns ${show(g)} into ${show(fwd)} or ${show(back)}`);
       return;
     }
 
@@ -284,7 +329,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       // φ → ψ, φ → ¬ψ ⊢ ¬φ
       if (f.t !== "not") fail("¬I must produce a negation");
       const phi = f.a;
-      const pair = (p: Formula, q: Formula) => p.t === "imp" && q.t === "imp" && equal(p.a, phi) && equal(q.a, phi) && q.b.t === "not" && equal(q.b.a, p.b);
+      const pair = (p: Formula, q: Formula) => p.t === "imp" && q.t === "imp" && same(p.a, phi) && same(q.a, phi) && q.b.t === "not" && same(q.b.a, p.b);
       if (!pair(L[0], L[1]) && !pair(L[1], L[0])) fail(`¬I needs ${show(phi)} → Q and ${show(phi)} → ¬Q`);
       return;
     }
@@ -292,7 +337,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
     case "notE": {
       expectCites(rule, L, S, 1, 0);
       const g = L[0];
-      if (!(g.t === "not" && g.a.t === "not" && equal(g.a.a, f))) fail("¬E turns ¬¬P into P");
+      if (!(g.t === "not" && g.a.t === "not" && same(g.a.a, f))) fail("¬E turns ¬¬P into P");
       return;
     }
 
@@ -301,7 +346,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       if (f.t !== "bot") fail("⊥I must produce ⊥");
       const ok = [0, 1].some((k) => {
         const c = L[k];
-        return c.t === "not" && equal(c.a, L[1 - k]);
+        return c.t === "not" && same(c.a, L[1 - k]);
       });
       if (!ok) fail("⊥I needs a formula P and its negation ¬P");
       return;
@@ -311,13 +356,13 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       expectCites(rule, L, S, 0, 1);
       // A subproof assuming φ and ending in ⊥ gives ¬φ.
       if (S[0].last.t !== "bot") fail("The subproof must end with ⊥");
-      if (!(f.t === "not" && equal(f.a, S[0].assumption))) fail(`⊥E concludes ${show({ t: "not", a: S[0].assumption })}, the negation of the assumption`);
+      if (!(f.t === "not" && same(f.a, S[0].assumption))) fail(`⊥E concludes ${show({ t: "not", a: S[0].assumption })}, the negation of the assumption`);
       return;
     }
 
     case "eqI":
       expectCites(rule, L, S, 0, 0);
-      if (!(f.t === "eq" && f.l === f.r)) fail("=I produces a formula of the form a = a");
+      if (!(f.t === "eq" && equalTerm(f.l, f.r))) fail("=I produces a formula of the form a = a");
       return;
 
     case "eqE": {
@@ -325,7 +370,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       const ok = [0, 1].some((k) => {
         const id = L[k];
         const g = L[1 - k];
-        return id.t === "eq" && (replacesSome(g, f, id.l, id.r) || replacesSome(g, f, id.r, id.l));
+        return id.t === "eq" && (replacesSome(g, f, id.l, id.r, ctx.options.exactSyntax) || replacesSome(g, f, id.r, id.l, ctx.options.exactSyntax));
       });
       if (!ok) fail("=E needs P(a) and a = b, and replaces some occurrences of a with b");
       return;
@@ -336,7 +381,7 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       const g = L[0];
       if (g.t !== "all") fail("∀E must cite a universal ∀x …");
       const gg = g;
-      if (instanceTerm(gg.body, gg.v, f) === false) fail(`${show(f)} is not an instance of ${show(g)}`);
+      if (instanceTerm(gg.body, gg.v, f, ctx.options.exactSyntax) === false) fail(`${show(f)} is not an instance of ${show(g)}`);
       return;
     }
 
@@ -345,9 +390,13 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       // φ ⊢ ∀x φ[c ↦ x], replacing every c, where c is in no premise or open assumption.
       if (f.t !== "all") fail("∀I must produce a universal ∀x …");
       const g = f;
-      const c = instanceTerm(g.body, g.v, L[0]);
+      const c = instanceTerm(g.body, g.v, L[0], ctx.options.exactSyntax);
       if (c === false) fail(`${show(L[0])} is not ${show(g.body)} with a name in place of ${g.v}`);
       if (c !== null) {
+        if (typeof c !== "string" || !/^[a-z][A-Za-z0-9_']*$/.test(c) ||
+            vocabulary.objects.includes(c) || vocabulary.functions.includes(c)) {
+          fail("Universal Introduction needs an undeclared placeholder");
+        }
         if (freeNames(f).has(c)) fail(`∀I must replace every ${c} with ${g.v}`);
         const used = ctx.actives[0].find((a) => freeNames(a).has(c));
         if (used) fail(`${c} appears in the premise or assumption ${show(used)}, so it can't be generalized`);
@@ -359,7 +408,10 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
       expectCites(rule, L, S, 1, 0);
       if (f.t !== "ex") fail("∃I must produce an existential ∃x …");
       const g = f;
-      if (instanceTerm(g.body, g.v, L[0]) === false) fail(`The cited line is not an instance of ${show(f)}`);
+      const witness = instanceTerm(g.body, g.v, L[0], ctx.options.exactSyntax);
+      if (!witness || [...termNames(witness)].some((name) => /^[A-Z]/.test(name))) {
+        fail(`The cited line must be a ground instance of ${show(f)} with at least one witness occurrence`);
+      }
       return;
     }
 
@@ -370,8 +422,8 @@ function applyRule(rule: RuleId, f: Formula, L: Formula[], S: CitedSubproof[], c
         const e = L[k];
         const u = L[1 - k];
         if (e.t !== "ex" || u.t !== "all" || u.body.t !== "imp") return false;
-        const same = equal({ t: "ex", v: e.v, body: e.body }, { t: "ex", v: u.v, body: u.body.a });
-        return same && !freeNames(u.body.b).has(u.v) && equal(u.body.b, f);
+        return e.v === u.v && strictEqual(e.body, u.body.a) &&
+          !freeNames(u.body.b).has(u.v) && same(u.body.b, f);
       });
       if (!ok) fail("∃E needs ∃x P(x) and ∀x (P(x) → Q), where Q doesn't mention x, and produces Q");
       return;

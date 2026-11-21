@@ -50,6 +50,57 @@ describe("problems", () => {
   }
 });
 
+describe("Stanford Fitch rule behavior", () => {
+  it("uses two elimination steps to reach a nested conjunct", () => {
+    const skipped = build([[0, "(P ∧ Q) ∧ R", "P"], [0, "Q", "andE", "1"]]);
+    const complete = build([[0, "(P ∧ Q) ∧ R", "P"], [0, "P ∧ Q", "andE", "1"], [0, "Q", "andE", "2"]]);
+    expect(checkProof(skipped).valid).toBe(false);
+    expect(checkProof(complete).valid).toBe(true);
+  });
+
+  it("uses a direct disjunct for Or Introduction", () => {
+    const lines = build([[0, "Q", "P"], [0, "(P ∨ Q) ∨ R", "orI", "1"]]);
+    expect(checkProof(lines).valid).toBe(false);
+  });
+
+  it("reiterates independent work from a closed subproof", () => {
+    const lines = build([
+      [0, "P", "P"], [1, "Q", "A"], [1, "P", "reit", "1"],
+      [0, "Q → P", "impI", "2-3"], [0, "P", "reit", "3"],
+    ]);
+    expect(checkProof(lines).valid).toBe(true);
+  });
+
+  it("requires matching quantifier binders in Existential Elimination", () => {
+    const lines = build([[0, "∃x P(x)", "P"], [0, "∀y (P(y) → Q)", "P"], [0, "Q", "exE", "1, 2"]]);
+    expect(checkProof(lines).valid).toBe(false);
+  });
+
+  it("requires a witness occurrence in Existential Introduction", () => {
+    const lines = build([[0, "P(a)", "P"], [0, "∃x P(a)", "exI", "1"]]);
+    expect(checkProof(lines).valid).toBe(false);
+  });
+
+  it("distinguishes a declared object constant from a placeholder", () => {
+    const lines = build([[0, "a = a", "eqI"], [0, "∀x (x = x)", "allI", "1"]]);
+    expect(checkProof(lines).valid).toBe(true);
+    expect(checkProof(lines, undefined, { vocabulary: { objects: ["a"], functions: [] } }).valid).toBe(false);
+  });
+
+  it("accepts a truth-table step only when the proof enables it", () => {
+    const rows = build([[0, "p", "P"]]);
+    rows.push({ id: "truth-table-step", depth: 0, kind: "step", text: "¬¬p", rule: "truthTable", refs: "1" });
+    const goal = parseFormula("¬¬p");
+    expect(checkProof(rows, goal).solved).toBe(false);
+    expect(checkProof(rows, goal, { allowAdvanced: true }).solved).toBe(true);
+  });
+
+  it("uses a compound term as a universal instance and in reflexivity", () => {
+    const lines = build([[0, "∀x P(x)", "P"], [0, "P(f(a))", "allE", "1"], [0, "f(a) = f(a)", "eqI"]]);
+    expect(checkProof(lines).valid).toBe(true);
+  });
+});
+
 describe("checker rejects bad proofs", () => {
   const goal = (s: string) => parseFormula(s);
 

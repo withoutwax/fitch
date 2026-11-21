@@ -3,7 +3,7 @@ import { RULES } from "@/lib/fitch/rules";
 
 export const metadata = { title: "Rules — Fitch" };
 
-const GROUPS = ["Structural", "Propositional", "Quantifiers", "Identity"] as const;
+const GROUPS = ["Structural", "Propositional", "Quantifiers", "Identity", "Advanced"] as const;
 
 export default function RulesPage() {
   return (
@@ -11,8 +11,8 @@ export default function RulesPage() {
       <h1 className="text-2xl font-semibold tracking-tight">Rules of the Fitch system</h1>
       <p className="mt-1 max-w-2xl text-sm text-muted">
         Every line after the premises is justified by one of these rules, citing earlier lines (like <code className="font-logic">3</code>) or
-        whole subproofs (like <code className="font-logic">4-7</code>). You can only cite lines that are still accessible, meaning they aren&apos;t inside a
-        subproof that has already ended.
+        whole subproofs (like <code className="font-logic">4-7</code>). A cited line is accessible when all assumptions it depends on are still active.
+        The proof workspace includes extra commands for standalone proofs.
       </p>
       {GROUPS.map((g) => (
         <section key={g} className="mt-8">

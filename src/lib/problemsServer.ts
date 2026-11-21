@@ -19,6 +19,7 @@ export function toProblem(d: RestDocument): Problem {
     goal: str("goal"),
     description: str("description"),
     hint: str("hint"),
+    allowShortcut: f.allowShortcut === true,
   };
 }
 

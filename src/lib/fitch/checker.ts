@@ -144,6 +144,7 @@ export function checkProof(lines: ProofLine[], goal?: Formula): CheckResult {
         if (s < 0) fail(`Lines ${from + 1}–${to + 1} are not a subproof (a subproof begins with an assumption)`);
         const sub = subs[s];
         if (sub.end !== to) fail(`The subproof starting at line ${from + 1} ends at line ${sub.end + 1}, not ${to + 1}`);
+        if (ctx[to].at(-1) !== s) fail(`Line ${to + 1} is still under a nested assumption. Close that subproof before citing this one.`);
         if (ctx[i].includes(s)) fail(`Line ${i + 1} is still inside the subproof ${from + 1}–${to + 1}; end it first`);
         const outer = ctx[from].filter((x) => x !== s);
         if (!outer.every((x) => ctx[i].includes(x))) fail(`The subproof ${from + 1}–${to + 1} is not accessible from line ${i + 1}`);

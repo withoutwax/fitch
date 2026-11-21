@@ -81,6 +81,14 @@ describe("rule buttons", () => {
     expect(out.kind === "done" && [out.lines[1].text, out.lines[1].depth, out.lines[1].refs, out.level]).toEqual(["P → P", 0, "1-1", 0]);
   });
 
+  it("does not discharge both nested assumptions with one button press", () => {
+    const lines = build([[1, "P", "A"], [2, "Q", "A"]]);
+    const closed = runAction("impI", { lines, checked: [lines[0].id], level: 0 });
+    expect(closed.kind).toBe("error");
+    const open = runAction("impI", { lines, checked: [], level: 2 });
+    expect(open.kind === "done" && [open.lines[2].text, open.lines[2].depth]).toEqual(["Q → Q", 1]);
+  });
+
   it("refuses a rule that doesn't fit, leaving nothing added", () => {
     const lines = start("P", "Q");
     const out = runAction("impE", { lines, checked: [lines[0].id, lines[1].id], level: 0 });

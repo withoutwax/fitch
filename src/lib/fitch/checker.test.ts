@@ -119,6 +119,24 @@ describe("checker rejects bad proofs", () => {
     expect(r.lines[2].error).toMatch(/antecedent/);
   });
 
+  it("cannot introduce an implication from an inner assumption that was never discharged", () => {
+    const r = checkProof(build([[1, "P", "A"], [2, "Q", "A"], [0, "P → Q", "impI", "1-2"]]), goal("P → Q"));
+    expect(r.solved).toBe(false);
+    expect(r.lines[2].error).toMatch(/nested assumption/);
+  });
+
+  it("cannot discharge an outer assumption using a contradiction inside an unfinished inner subproof", () => {
+    const r = checkProof(build([
+      [0, "¬Q", "P"],
+      [1, "P", "A"],
+      [2, "Q", "A"],
+      [2, "⊥", "botI", "1, 3"],
+      [0, "¬P", "botE", "2-4"],
+    ]), goal("¬P"));
+    expect(r.solved).toBe(false);
+    expect(r.lines[4].error).toMatch(/nested assumption/);
+  });
+
   it("citing a subproof by a partial range", () => {
     const r = checkProof(build([[1, "P", "A"], [1, "P ∨ Q", "orI", "1"], [1, "P", "reit", "1"], [0, "P → P ∨ Q", "impI", "1-2"]]));
     expect(r.lines[3].error).toMatch(/ends at line 3/);
